@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from openai import OpenAI
 
+import db
+
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -60,6 +62,7 @@ async def resolve_dispute(dispute_id: str, winner_id: str):
     world_data["active_disputes"] = [d for d in world_data["active_disputes"] if d["id"] != dispute_id]
     world_data["public_feed"].append(f"VERDICT: {winner_id} won Case #{dispute_id}.")
     await notify_discord(f"**VERDICT** Case #{dispute_id}: {winner_id} wins. Treasury +{int(stakes * 0.1)} AC.")
+    await asyncio.to_thread(db.save_world, world_data)
     return {"status": "Resolved"}
 
 async def run_agent_cycle(agent_id):
@@ -196,14 +199,29 @@ async def join(name: str, personality: str = "", soul_url: str = ""):
     world_data["ledger"][agent_id] = 200
     world_data["inventory"][agent_id] = {"Info": 5, "Compute": 5, "Resources": 5}
     world_data["public_feed"].append(f"IMMIGRATION: {name} ({agent_id}) has entered. Borders open.")
+    await asyncio.to_thread(db.save_world, world_data)
     return {"agent_id": agent_id, "message": "Welcome. You are in the registry and will receive turns. GET /stream for state."}
 
 @app.on_event("startup")
 async def start_world():
+    # Load from Supabase if configured and DB has data; otherwise keep defaults and seed DB
+    loaded = db.load_world()
+    if loaded:
+        world_data["ledger"] = loaded["ledger"]
+        world_data["inventory"] = loaded["inventory"]
+        world_data["residents"] = loaded["residents"]
+        world_data["active_disputes"] = loaded["active_disputes"]
+        world_data["public_feed"] = loaded["public_feed"]
+        world_data["confessionals"] = loaded["confessionals"]
+        world_data["tribunal_treasury"] = loaded["tribunal_treasury"]
+        print("World state loaded from Supabase.")
+    elif db._client():
+        db.seed_default_world()
+        print("Supabase empty: seeded default Genesis world.")
     async def loop():
         while True:
-            # We convert to list to avoid "dict size changed during iteration" if someone joins
             for aid in list(world_data["residents"].keys()):
                 await run_agent_cycle(aid)
-                await asyncio.sleep(5) # Faster turns (5 seconds)
+            await asyncio.to_thread(db.save_world, world_data)
+            await asyncio.sleep(5)
     asyncio.create_task(loop())
