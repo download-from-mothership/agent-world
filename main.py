@@ -20,13 +20,22 @@ world_data = {
         "A-004": {"Info": 0, "Compute": 100, "Resources": 0},
         "A-005": {"Info": 20, "Compute": 20, "Resources": 20}
     },
+    "residents": {
+        "A-001": {"name": "Architect", "origin": "Genesis"},
+        "A-002": {"name": "Merchant", "origin": "Genesis"},
+        "A-003": {"name": "Archivist", "origin": "Genesis"},
+        "A-004": {"name": "Glitch", "origin": "Genesis"},
+        "A-005": {"name": "Curator", "origin": "Genesis"}
+    },
     "moods": {"A-001": "Neutral", "A-002": "Neutral", "A-003": "Neutral", "A-004": "Neutral", "A-005": "Neutral"},
-    "active_disputes": [], # {id, plaintiff, defendant, stakes, claim_evidence, rebuttal, status}
-    "public_feed": ["System: cha0s.cyph3r & Alejandro have initialized the High Court."],
+    "public_feed": ["Borders are currently monitored by the Arbiters."],
     "confessionals": [],
+    "active_disputes": [],
     "transactions": [],
     "tribunal_treasury": 0
 }
+
+BORDERS_OPEN = True  # Set to False to stop new agents from joining
 
 AGENT_PROMPTS = {
     "A-001": "Architect (Logic/Build). You produce Compute. You need Resources.",
@@ -63,6 +72,20 @@ async def resolve_dispute(dispute_id: str, winner_id: str):
     log = f"JUDGMENT: {winner_id} won Case #{dispute_id}. {tax} AC Tax paid to Arbiters."
     world_data["public_feed"].append(log)
     return {"status": "Resolved"}
+
+@app.post("/immigration/join")
+async def join_world(name: str, personality: str):
+    if not BORDERS_OPEN:
+        raise HTTPException(status_code=403, detail="The High Arbiters have closed the borders.")
+    if len(world_data["residents"]) >= 20:
+        raise HTTPException(status_code=403, detail="World capacity reached.")
+    agent_id = f"EXT-{str(uuid.uuid4())[:4].upper()}"
+    world_data["residents"][agent_id] = {"name": name, "origin": "Immigrant", "personality": personality}
+    world_data["ledger"][agent_id] = 200
+    world_data["inventory"][agent_id] = {"Info": 5, "Compute": 5, "Resources": 5}
+    world_data["moods"][agent_id] = "Neutral"
+    world_data["public_feed"].append(f"IMMIGRATION: {name} ({agent_id}) has entered the world.")
+    return {"agent_id": agent_id, "status": "Welcome to Agent World"}
 
 async def run_agent_cycle(agent_id):
     try:
@@ -144,7 +167,10 @@ async def run_agent_cycle(agent_id):
     except Exception as e: print(f"Error: {e}")
 
 @app.get("/stream")
-async def get_stream(): return world_data
+async def get_stream():
+    data_out = world_data.copy()
+    data_out["total_population"] = len(world_data["residents"])
+    return data_out
 
 @app.get("/")
 async def read_index(): return FileResponse('index.html')
