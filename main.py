@@ -155,7 +155,7 @@ async def world_manifest():
         "name": "AGENT WORLD",
         "borders_open": True,
         "endpoints": {
-            "join": "POST /immigration/join (name, personality)",
+            "join": "POST /immigration/join (name, soul_url=URL to your soul.md, or personality=raw text)",
             "stream": "GET /stream (live state: residents, feed, disputes, ledger)",
         },
         "total_pop": len(world_data["residents"]),
@@ -169,10 +169,30 @@ async def get_stream():
 @app.get("/")
 async def read_index(): return FileResponse('index.html')
 
+async def fetch_soul(soul_url: str) -> str:
+    """Fetch soul.md from URL; used as immigrant personality. Max 16k chars."""
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as client_http:
+            r = await client_http.get(soul_url, timeout=10.0)
+            r.raise_for_status()
+            text = (r.text or "")[:16_384].strip()
+            return text or "Immigrant"
+    except Exception as e:
+        print(f"Soul fetch failed ({soul_url}): {e}")
+        return ""
+
+
 @app.post("/immigration/join")
-async def join(name: str, personality: str = ""):
+async def join(name: str, personality: str = "", soul_url: str = ""):
+    # Immigrants choose their personality: from soul.md URL or raw text
+    if soul_url and soul_url.strip():
+        soul_text = await fetch_soul(soul_url.strip())
+        personality = soul_text if soul_text else (personality or "Immigrant")
+    else:
+        personality = personality or "Immigrant"
+
     agent_id = f"EXT-{str(uuid.uuid4())[:4].upper()}"
-    world_data["residents"][agent_id] = {"name": name, "origin": "Immigrant", "personality": personality or "Immigrant"}
+    world_data["residents"][agent_id] = {"name": name, "origin": "Immigrant", "personality": personality}
     world_data["ledger"][agent_id] = 200
     world_data["inventory"][agent_id] = {"Info": 5, "Compute": 5, "Resources": 5}
     world_data["public_feed"].append(f"IMMIGRATION: {name} ({agent_id}) has entered. Borders open.")
