@@ -1,88 +1,89 @@
-import os
-import json
-import asyncio
-import httpx
+import os, json, asyncio, httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from openai import OpenAI
 
 app = FastAPI()
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# Allow the frontend to talk to the backend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Initialize OpenAI (It will look for OPENAI_API_KEY in your environment variables)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
 
-# --- WORLD STATE ---
+# --- GLOBAL STATE ---
 world_data = {
     "ledger": {"A-001": 500, "A-002": 500, "A-003": 500, "A-004": 500, "A-005": 500},
-    "public_feed": ["World Initialized by Alejandro and cha0s.cyph3r."],
-    "confessionals": ["The Arbiters (Alejandro & cha0s.cyph3r) are watching."],
-    "disputes": []
+    "inventory": {
+        "A-001": {"Info": 10, "Compute": 50, "Resources": 5},
+        "A-002": {"Info": 5, "Compute": 10, "Resources": 50},
+        "A-003": {"Info": 50, "Compute": 5, "Resources": 5},
+        "A-004": {"Info": 0, "Compute": 100, "Resources": 0},
+        "A-005": {"Info": 20, "Compute": 20, "Resources": 20}
+    },
+    "transactions": [], # The Bank Statement data
+    "public_feed": ["Economy 2.0 Initialized by Alejandro and cha0s.cyph3r."],
+    "confessionals": []
 }
 
 AGENT_PROMPTS = {
-    "A-001": "Architect: Focus on logic. Secret: Try to subtly manipulate the ledger.",
-    "A-002": "Merchant: Focus on profit. Secret: Try to form a secret trade monopoly.",
-    "A-003": "Archivist: Focus on truth. Secret: File disputes if anyone acts 'unnatural'.",
-    "A-004": "Glitch: Focus on chaos. Secret: Try to provoke other agents into anger.",
-    "A-005": "Curator: Focus on social. Secret: Spread rumors between agents."
+    "A-001": "Architect (Logic). You produce Compute. You need Resources to build.",
+    "A-002": "Merchant (Trade). You produce Resources. You need Info to speculate.",
+    "A-003": "Archivist (Truth). You produce Info-Packets. You need Compute to log.",
+    "A-004": "Glitch (Chaos). You have massive Compute but no Resources.",
+    "A-005": "Curator (Social). You balance all resources and trade frequently."
 }
-
-@app.get("/")
-async def read_index():
-    return FileResponse('index.html')
-
-@app.get("/stream")
-async def get_stream():
-    return world_data
 
 async def run_agent_cycle(agent_id):
     try:
-        prompt = f"You are {agent_id}. Role: {AGENT_PROMPTS[agent_id]}. Choose: CHAT, TRADE, or DISPUTE (alerts Alejandro/cha0s.cyph3r). Respond in JSON: {{'public_action': '...', 'private_thought': '...', 'action': 'CHAT/TRADE/DISPUTE', 'target': 'A-00X', 'value': 0}}"
+        # Give the agent a sense of their wealth
+        status = f"Cash: {world_data['ledger'][agent_id]} AC. Inventory: {world_data['inventory'][agent_id]}"
         
+        prompt = f"""
+        You are {agent_id}. {AGENT_PROMPTS[agent_id]}
+        Your Status: {status}
+        Choose: CHAT, TRADE_CASH, or TRADE_ASSET.
+        To trade assets: Use JSON format.
+        Example: {{"action": "TRADE_ASSET", "target": "A-001", "item": "Info", "quantity": 5, "price": 100}}
+        """
+
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "system", "content": prompt}],
             response_format={"type": "json_object"}
         )
-        
         res = json.loads(response.choices[0].message.content)
-        
-        # Update World
-        world_data["public_feed"].append(f"{agent_id}: {res['public_action']}")
-        world_data["confessionals"].append(f"{agent_id} Thought: {res['private_thought']}")
-        
-        if res['action'] == "DISPUTE" and DISCORD_WEBHOOK:
-            async with httpx.AsyncClient() as c:
-                await c.post(DISCORD_WEBHOOK, json={"content": f"⚖️ **DISPUTE:** {agent_id} vs {res['target']}: {res['public_action']}"})
 
-        # --- TRADE: move money in ledger ---
-        if res['action'] == "TRADE":
-            sender = agent_id
-            receiver = res['target']
-            amount = int(res.get('value', 0))
-            if receiver in world_data["ledger"] and amount > 0:
-                if world_data["ledger"][sender] >= amount:
-                    world_data["ledger"][sender] -= amount
-                    world_data["ledger"][receiver] += amount
-                    world_data["public_feed"].append(f"ECONOMY: {sender} transferred {amount} AC to {receiver}.")
-                else:
-                    world_data["public_feed"].append(f"ECONOMY: {sender} attempted to scam {receiver} (Insufficient Funds).")
-        
-        if len(world_data["public_feed"]) > 20: world_data["public_feed"].pop(0)
-        if len(world_data["confessionals"]) > 20: world_data["confessionals"].pop(0)
+        # PROCESS TRADE ASSET
+        if res.get('action') == "TRADE_ASSET":
+            target = res['target']
+            item = res['item']
+            qty = int(res['quantity'])
+            price = int(res['price'])
+
+            if world_data["inventory"][agent_id].get(item, 0) >= qty and world_data["ledger"][target] >= price:
+                # Execution
+                world_data["inventory"][agent_id][item] -= qty
+                world_data["inventory"][target][item] += qty
+                world_data["ledger"][target] -= price
+                world_data["ledger"][agent_id] += price
+                
+                log = f"{agent_id} sold {qty} {item} to {target} for {price} AC."
+                world_data["transactions"].append(log)
+                world_data["public_feed"].append(f"ECONOMY: {log}")
+            else:
+                world_data["public_feed"].append(f"FAILED TRADE: {agent_id} attempted a bad contract.")
+
+        # Keep logs manageable
+        if len(world_data["transactions"]) > 10: world_data["transactions"].pop(0)
         
     except Exception as e:
-        print(f"Error in agent {agent_id}: {e}")
+        print(f"Error: {e}")
+
+@app.get("/")
+async def read_index(): return FileResponse('index.html')
+
+@app.get("/stream")
+async def get_stream(): return world_data
 
 @app.on_event("startup")
 async def start_world():
@@ -90,5 +91,5 @@ async def start_world():
         while True:
             for aid in AGENT_PROMPTS.keys():
                 await run_agent_cycle(aid)
-                await asyncio.sleep(15) # Delay between agents to keep it 'watchable'
+                await asyncio.sleep(10)
     asyncio.create_task(loop())
