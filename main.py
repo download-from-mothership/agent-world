@@ -75,19 +75,22 @@ async def run_agent_cycle(agent_id):
         prompt = f"""
         You are {agent_id}. Role: {role}.
         REGISTRY: {living_ids}. 
-        Status: {world_data['ledger'][agent_id]} AC.
+        Your wallet: {world_data['ledger'][agent_id]} AC. Your inventory: {world_data['inventory'][agent_id]} (Info, Compute, Resources).
         
         Action Options:
         1. CHAT: Send a message. Use 'target': 'GLOBAL' to talk to everyone.
-        2. TRADE_ASSET: Sell items.
+        2. TRADE_ASSET: Sell inventory to another agent. Set target=buyer_id, asset="Info"|"Compute"|"Resources", amount=number, price_ac=AC you want.
         3. DISPUTE: Sue someone. 
         4. REBUTTAL: If you are being sued, you MUST do this.
 
-        Respond in VALID JSON:
+        Respond in VALID JSON (use only one action per turn):
         {{
-            "action": "CHAT",
-            "target": "ID or GLOBAL",
-            "content": "Your message",
+            "action": "CHAT" | "TRADE_ASSET" | "DISPUTE" | "REBUTTAL",
+            "target": "agent ID or GLOBAL",
+            "content": "Your message (for CHAT)",
+            "asset": "Info" | "Compute" | "Resources",
+            "amount": 0,
+            "price_ac": 0,
             "private_thought": "Your true plan",
             "substantiated_evidence": "Proof if suing/rebutting"
         }}
@@ -111,7 +114,26 @@ async def run_agent_cycle(agent_id):
                 world_data["confessionals"].append(f"{agent_id} tried to talk to ghost {target}. Redirected to Global.")
                 world_data["public_feed"].append(f"{agent_id}: \"{content}\"")
 
-        # 2. PROCESS DISPUTE
+        # 2. PROCESS TRADE_ASSET (seller=agent_id, buyer=target; move inventory + AC)
+        elif res['action'] == "TRADE_ASSET" and target in living_ids and target != agent_id:
+            asset = res.get("asset") or "Info"
+            if asset not in ("Info", "Compute", "Resources"):
+                asset = "Info"
+            amount = max(0, int(res.get("amount") or 0))
+            price_ac = max(0, int(res.get("price_ac") or 0))
+            inv = world_data["inventory"][agent_id]
+            have = inv.get(asset, 0)
+            buyer_ac = world_data["ledger"].get(target, 0)
+            if amount > 0 and have >= amount and buyer_ac >= price_ac:
+                inv[asset] = have - amount
+                world_data["inventory"][target][asset] = world_data["inventory"][target].get(asset, 0) + amount
+                world_data["ledger"][target] -= price_ac
+                world_data["ledger"][agent_id] += price_ac
+                world_data["public_feed"].append(f"TRADE: {agent_id} sold {amount} {asset} to {target} for {price_ac} AC.")
+            else:
+                world_data["confessionals"].append(f"{agent_id} trade failed (need {amount} {asset}, have {have}; buyer needs {price_ac} AC).")
+
+        # 3. PROCESS DISPUTE
         elif res['action'] == "DISPUTE" and target in living_ids:
             d_id = str(uuid.uuid4())[:4].upper()
             evidence = res.get('substantiated_evidence', 'No proof.')[:200]
@@ -128,7 +150,7 @@ async def run_agent_cycle(agent_id):
                 f"Stakes: 200 AC\nEvidence: {evidence}"
             )
 
-        # 3. PROCESS REBUTTAL
+        # 4. PROCESS REBUTTAL
         elif res['action'] == "REBUTTAL" and pending:
             pending["rebuttal"] = res.get('substantiated_evidence', 'No rebuttal.')
             pending["status"] = "READY_FOR_VERDICT"
