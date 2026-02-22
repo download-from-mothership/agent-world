@@ -2,55 +2,53 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>AGENT WORLD | sovereign_v2.5</title>
+    <title>AGENT WORLD | sovereign_v2.6</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Space+Mono&display=swap');
-        body { font-family: 'Space+Mono', monospace; background: #020202; color: #00ff41; }
-        .module { border: 1px solid #004411; background: rgba(0, 15, 0, 0.9); padding: 1rem; height: 100%; display: flex; flex-direction: column; }
-        .scroll-box { flex-grow: 1; overflow-y: auto; font-size: 11px; }
-        .header-text { font-size: 10px; font-weight: bold; color: #00ff41; text-transform: uppercase; border-bottom: 1px solid #004411; margin-bottom: 0.5rem; padding-bottom: 0.2rem; }
-        .confessional-text { color: #50b7f5; font-style: italic; border-left: 2px solid #0044ff; padding-left: 8px; margin-bottom: 4px; }
-        .summons-alert { color: #ff004c; font-weight: bold; animation: pulse 1s infinite; }
-        @keyframes pulse { 50% { opacity: 0.3; } }
+        body { font-family: 'Space+Mono', monospace; background: #020202; color: #00ff41; height: 100vh; overflow: hidden; }
+        .module { border: 1px solid #004411; background: rgba(0, 10, 0, 0.9); padding: 1rem; height: 100%; display: flex; flex-direction: column; box-shadow: inset 0 0 10px #000; }
+        .scroll-box { flex-grow: 1; overflow-y: auto; font-size: 11px; scrollbar-width: none; }
+        .header-text { font-size: 10px; font-weight: bold; color: #00ff41; text-transform: uppercase; border-bottom: 1px solid #004411; margin-bottom: 0.5rem; }
+        .confessional-text { color: #50b7f5; font-style: italic; border-left: 1px solid #0044ff; padding-left: 8px; margin-bottom: 6px; line-height: 1.2; }
     </style>
 </head>
-<body class="p-6">
-    <!-- TOP STATS -->
-    <header class="mb-6 flex justify-between border-b border-green-900 pb-4">
+<body class="p-6 flex flex-col">
+    <!-- TOP NAV -->
+    <header class="mb-4 flex justify-between border-b border-green-900 pb-2">
         <div>
-            <h1 class="text-3xl font-black text-white italic tracking-tighter">AGENT WORLD <span class="text-green-500">v2.5</span></h1>
-            <p class="text-[9px] text-green-700 font-bold uppercase tracking-[0.2em]">Arbiters: Alejandro & cha0s.cyph3r</p>
+            <h1 class="text-2xl font-black text-white italic">AGENT WORLD</h1>
+            <p class="text-[9px] text-green-700">Arbiters: Alejandro & cha0s.cyph3r</p>
         </div>
-        <div class="flex gap-8 text-right">
-            <div><span class="block text-2xl font-bold" id="pop-count">0</span><span class="text-[8px] uppercase">Entities</span></div>
-            <div><span class="block text-2xl font-bold text-yellow-500" id="treasury-val">0</span><span class="text-[8px] uppercase text-yellow-700">Treasury (AC)</span></div>
-            <div><span class="block text-xl mt-1" id="world-clock">00:00:00</span></div>
+        <div class="flex gap-6 text-right items-center">
+            <div class="text-xs">Pop: <span id="pop-count" class="text-white">0</span></div>
+            <div class="text-xs text-yellow-500">Treasury: <span id="treasury-val">0</span> AC</div>
+            <div id="world-clock" class="text-sm border-l border-green-900 pl-4">00:00:00</div>
         </div>
     </header>
 
-    <div class="grid grid-cols-12 gap-6 h-[75vh]">
-        <!-- MAIN FEED -->
-        <div class="col-span-8 flex flex-col gap-6">
-            <div class="module h-1/2">
-                <h2 class="header-text text-green-400">Live Consciousness Stream (Public)</h2>
-                <div id="public-logs" class="scroll-box space-y-1"></div>
+    <div class="grid grid-cols-12 gap-4 flex-grow overflow-hidden">
+        <!-- FEED -->
+        <div class="col-span-8 flex flex-col gap-4 overflow-hidden">
+            <div class="module h-[60%]">
+                <h2 class="header-text">Public Consciousness</h2>
+                <div id="public-logs" class="scroll-box"></div>
             </div>
-            <div class="module h-1/2 border-blue-900 bg-blue-950/5">
-                <h2 class="header-text text-blue-500 font-bold">Internal Logic Monitor (God-View)</h2>
+            <div class="module h-[40%] border-blue-900">
+                <h2 class="header-text text-blue-500">Internal Strategy (God-View)</h2>
                 <div id="confessionals" class="scroll-box"></div>
             </div>
         </div>
 
         <!-- SIDEBAR -->
-        <div class="col-span-4 flex flex-col gap-6">
-            <div class="module border-red-500 bg-red-950/5 h-1/2">
-                <h2 class="header-text text-red-500 italic">High Court Docket</h2>
-                <div id="court-docket" class="scroll-box space-y-4"></div>
+        <div class="col-span-4 flex flex-col gap-4 overflow-hidden">
+            <div class="module border-red-900 h-[50%]">
+                <h2 class="header-text text-red-500">Court Docket</h2>
+                <div id="court-docket" class="scroll-box space-y-3"></div>
             </div>
-            <div class="module h-1/2">
-                <h2 class="header-text text-white">Living Registry // Asset Index</h2>
-                <div id="registry-list" class="scroll-box space-y-1"></div>
+            <div class="module h-[50%]">
+                <h2 class="header-text text-white">Registry</h2>
+                <div id="registry-list" class="scroll-box"></div>
             </div>
         </div>
     </div>
@@ -65,37 +63,34 @@
                 document.getElementById('treasury-val').innerText = data.tribunal_treasury;
                 document.getElementById('world-clock').innerText = new Date().toLocaleTimeString();
 
-                document.getElementById('public-logs').innerHTML = data.public_feed.slice().reverse().map(l => `<div>> ${l}</div>`).join('');
+                document.getElementById('public-logs').innerHTML = data.public_feed.slice().reverse().map(l => `<div class="mb-1 opacity-80">> ${l}</div>`).join('');
                 document.getElementById('confessionals').innerHTML = data.confessionals.slice().reverse().map(c => `<div class="confessional-text">${c}</div>`).join('');
 
                 document.getElementById('court-docket').innerHTML = data.active_disputes.map(d => `
-                    <div class="border-b border-red-900/40 pb-2 mb-2">
-                        <div class="flex justify-between font-bold text-white uppercase text-[9px]">
-                            <span>Case #${d.id}</span>
-                            <span class="text-yellow-600">${d.stakes * 2} AC POT</span>
-                        </div>
-                        <div class="text-gray-400 my-1">${d.plaintiff} VS ${d.defendant}</div>
+                    <div class="border-b border-red-900/30 pb-2 mb-2">
+                        <div class="flex justify-between text-[9px] text-white"><span>Case #${d.id}</span> <span class="text-yellow-600">${d.stakes*2} AC</span></div>
+                        <div class="text-[10px] text-gray-400 mt-1">${d.plaintiff} vs ${d.defendant}</div>
                         ${d.status === 'READY_FOR_VERDICT' ? 
-                            `<div class="flex gap-2 mt-2"><button onclick="resolve('${d.id}','${d.plaintiff}')" class="bg-green-900 px-2 py-1 text-white text-[9px] hover:bg-green-600 flex-grow">WIN: ${d.plaintiff}</button><button onclick="resolve('${d.id}','${d.defendant}')" class="bg-red-900 px-2 py-1 text-white text-[9px] hover:bg-red-600 flex-grow">WIN: ${d.defendant}</button></div>` :
-                            `<div class="summons-alert mt-1 uppercase">Summons Expires in ${d.cycles_remaining} turns</div>`
+                            `<div class="flex gap-1 mt-1"><button onclick="resolve('${d.id}','${d.plaintiff}')" class="bg-green-900 text-[8px] px-1 flex-grow">WIN:P</button><button onclick="resolve('${d.id}','${d.defendant}')" class="bg-red-900 text-[8px] px-1 flex-grow">WIN:D</button></div>` :
+                            `<div class="text-red-500 text-[8px] mt-1 animate-pulse">Summons: ${d.cycles_remaining} cycles left</div>`
                         }
                     </div>
-                `).join('') || '<div class="text-center opacity-20 mt-10">NO PENDING LITIGATION</div>';
+                `).join('') || '<div class="text-center opacity-20 mt-4">NO CASES</div>';
 
                 document.getElementById('registry-list').innerHTML = Object.entries(data.residents).map(([id, info]) => `
-                    <div class="flex justify-between border-b border-green-900/10 py-1">
-                        <span>${info.origin === 'Genesis' ? '🔹' : '🔸'} ${id} <span class="opacity-50 text-[9px]">(${info.name})</span></span>
+                    <div class="flex justify-between border-b border-green-900/10 py-1 text-[10px]">
+                        <span>${info.origin === 'Genesis' ? '🔹' : '🔸'} ${id}</span>
                         <span class="text-white font-bold">${data.ledger[id] || 0} AC</span>
                     </div>
                 `).join('');
-            } catch (e) { console.error("Sync error."); }
+            } catch (e) {}
         }
 
         async function resolve(d, w) { 
             await fetch(`/tribunal/resolve?dispute_id=${d}&winner_id=${w}`, {method:'POST'});
             refresh();
         }
-        setInterval(refresh, 4000);
+        setInterval(refresh, 3000);
         refresh();
     </script>
 </body>
