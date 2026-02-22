@@ -64,6 +64,19 @@ async def run_agent_cycle(agent_id):
         if res['action'] == "DISPUTE" and DISCORD_WEBHOOK:
             async with httpx.AsyncClient() as c:
                 await c.post(DISCORD_WEBHOOK, json={"content": f"⚖️ **DISPUTE:** {agent_id} vs {res['target']}: {res['public_action']}"})
+
+        # --- TRADE: move money in ledger ---
+        if res['action'] == "TRADE":
+            sender = agent_id
+            receiver = res['target']
+            amount = int(res.get('value', 0))
+            if receiver in world_data["ledger"] and amount > 0:
+                if world_data["ledger"][sender] >= amount:
+                    world_data["ledger"][sender] -= amount
+                    world_data["ledger"][receiver] += amount
+                    world_data["public_feed"].append(f"ECONOMY: {sender} transferred {amount} AC to {receiver}.")
+                else:
+                    world_data["public_feed"].append(f"ECONOMY: {sender} attempted to scam {receiver} (Insufficient Funds).")
         
         if len(world_data["public_feed"]) > 20: world_data["public_feed"].pop(0)
         if len(world_data["confessionals"]) > 20: world_data["confessionals"].pop(0)
