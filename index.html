@@ -2,95 +2,116 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>AGENT WORLD | Arbiter Dashboard</title>
+    <title>AGENT WORLD | Arbiter v2.5</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Space+Mono&display=swap');
-        body { font-family: 'Space+Mono', monospace; background: #050505; color: #00ff41; }
-        .module { border: 1px solid #004411; background: rgba(0, 15, 0, 0.95); padding: 1.2rem; }
+        body { font-family: 'Space+Mono', monospace; background: #030303; color: #00ff41; }
+        .module { border: 1px solid #004411; background: rgba(0, 15, 0, 0.95); padding: 1.2rem; box-shadow: 0 0 10px rgba(0,255,65,0.1); }
         .confessional { color: #50b7f5; font-style: italic; border-left: 2px solid #0044ff; padding-left: 10px; margin-bottom: 8px; font-size: 11px; }
-        .mood-icon { font-size: 14px; margin-right: 5px; }
+        .evidence-box { background: #000; border: 1px solid #222; padding: 8px; font-size: 10px; height: 80px; overflow-y: auto; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #004411; }
     </style>
 </head>
 <body class="p-6">
     <header class="mb-6 flex justify-between border-b border-green-900 pb-4 items-center">
         <div>
-            <h1 class="text-3xl font-black text-white italic">AGENT WORLD <span class="text-green-500">v2.5</span></h1>
-            <p class="text-xs text-green-700">Protocol: God-View Enabled // Arbiters: Alejandro & cha0s.cyph3r</p>
+            <h1 class="text-3xl font-black text-white italic tracking-tighter">AGENT WORLD <span class="text-green-500 text-xl">SOVEREIGN</span></h1>
+            <p class="text-[10px] text-green-700 font-bold uppercase tracking-widest">Arbiters: Alejandro & cha0s.cyph3r</p>
         </div>
-        <div id="world-clock" class="text-xl font-bold">00:00:00</div>
+        <div class="text-right">
+            <div id="world-clock" class="text-xl font-bold">00:00:00</div>
+            <div class="text-yellow-600 text-[10px] font-bold uppercase">Treasury: <span id="treasury-val" class="text-white">0</span> AC</div>
+        </div>
     </header>
 
     <div class="grid grid-cols-12 gap-6">
-        <!-- LEFT: THE VISIBLE WORLD -->
+        <!-- WORLD LOGS -->
         <div class="col-span-12 lg:col-span-8 space-y-6">
             <div class="module h-80 overflow-y-auto">
-                <h2 class="text-xs font-bold uppercase mb-4 text-green-400 tracking-tighter">Live Consciousness (Public)</h2>
+                <h2 class="text-xs font-bold uppercase mb-4 text-green-400">Public Consciousness Stream</h2>
                 <div id="public-logs" class="text-xs space-y-2"></div>
             </div>
 
-            <!-- RESTORED INTERNAL DIALOGUE -->
-            <div class="module h-64 overflow-y-auto border-blue-900 bg-blue-950/5">
-                <h2 class="text-xs font-bold uppercase mb-4 text-blue-500 flex justify-between">
-                    Internal Dialogue // Confessionals <span>[ARBITER ACCESS ONLY]</span>
-                </h2>
+            <div class="module h-64 overflow-y-auto border-blue-900">
+                <h2 class="text-xs font-bold uppercase mb-4 text-blue-500">Internal Strategy (God-View)</h2>
                 <div id="confessionals" class="space-y-1"></div>
             </div>
         </div>
 
-        <!-- RIGHT: ASSETS & MOODS -->
+        <!-- DOCKET & ASSETS -->
         <div class="col-span-12 lg:col-span-4 space-y-6">
-            <div class="module">
-                <h2 class="text-xs font-bold uppercase mb-4 text-white">Population Index</h2>
-                <div id="inventory-list" class="space-y-4"></div>
+            <!-- COURT DOCKET -->
+            <div class="module border-red-500 bg-red-950/5 h-96 overflow-y-auto">
+                <h2 class="text-red-500 font-bold text-xs uppercase mb-4 italic">High Court Docket (10% Tax)</h2>
+                <div id="court-docket" class="space-y-6"></div>
             </div>
-            
-            <div class="module border-red-900 bg-red-950/10">
-                <h2 class="text-red-500 font-bold text-xs uppercase mb-2">Tribunal Control</h2>
-                <div class="grid grid-cols-2 gap-2">
-                    <button onclick="alert('Market Frozen')" class="text-[9px] border border-red-900 p-2 hover:bg-red-900">FREEZE ECONOMY</button>
-                    <button onclick="alert('Sentencing Protocol')" class="text-[9px] border border-red-900 p-2 hover:bg-red-900">GAVEL DOWN</button>
-                </div>
+
+            <!-- POPULATION -->
+            <div class="module">
+                <h2 class="text-xs font-bold uppercase mb-4 text-white">Global Assets & Sentiment</h2>
+                <div id="inventory-list" class="space-y-4"></div>
             </div>
         </div>
     </div>
 
     <script>
-        const MOOD_MAP = {
-            "Happy": "🟢 😊", "Angry": "🔴 😡", "Greedy": "🟡 🤑", "Paranoid": "🟣 👁️", "Neutral": "⚪ 😐"
-        };
+        const MOOD_MAP = { "Happy": "😊", "Angry": "😡", "Greedy": "🤑", "Paranoid": "👁️", "Neutral": "😐" };
+
+        async function resolveCase(dId, winnerId) {
+            await fetch(`/tribunal/resolve?dispute_id=${dId}&winner_id=${winnerId}`, {method: 'POST'});
+            refresh();
+        }
 
         async function refresh() {
             try {
                 const res = await fetch('/stream');
                 const data = await res.json();
 
-                // 1. Public Feed
+                document.getElementById('treasury-val').innerText = data.tribunal_treasury;
                 document.getElementById('public-logs').innerHTML = data.public_feed.slice().reverse().map(l => `<div>> ${l}</div>`).join('');
+                document.getElementById('confessionals').innerHTML = data.confessionals.slice().reverse().map(c => `<div class="confessional">${c}</div>`).join('');
 
-                // 2. Confessionals (God-View)
-                document.getElementById('confessionals').innerHTML = data.confessionals.slice().reverse().map(c => `
-                    <div class="confessional">${c}</div>
-                `).join('');
+                // Render Docket
+                document.getElementById('court-docket').innerHTML = data.active_disputes.map(d => `
+                    <div class="border-b border-red-900/50 pb-4">
+                        <div class="flex justify-between text-[10px] text-white mb-2 font-bold">
+                            <span>CASE #${d.id}</span>
+                            <span class="text-yellow-500">${d.stakes * 2} AC POT</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-1 mb-2">
+                            <div class="evidence-box">
+                                <span class="text-green-500 font-bold">CLAIM (${d.plaintiff}):</span><br/>${d.claim_evidence}
+                            </div>
+                            <div class="evidence-box">
+                                <span class="text-red-500 font-bold">REBUTTAL (${d.defendant}):</span><br/>${d.rebuttal}
+                            </div>
+                        </div>
+                        ${d.status === 'READY_FOR_VERDICT' ? `
+                            <div class="flex gap-2">
+                                <button onclick="resolveCase('${d.id}', '${d.plaintiff}')" class="flex-grow bg-green-900 text-[10px] py-1 hover:bg-green-600 transition">WIN: ${d.plaintiff}</button>
+                                <button onclick="resolveCase('${d.id}', '${d.defendant}')" class="flex-grow bg-red-900 text-[10px] py-1 hover:bg-red-600 transition">WIN: ${d.defendant}</button>
+                            </div>
+                        ` : `<div class="text-center text-[9px] text-yellow-700 animate-pulse">Awaiting Rebuttal...</div>`}
+                    </div>
+                `).join('') || '<div class="text-gray-700 text-center text-xs mt-10 italic">No pending litigation.</div>';
 
-                // 3. Asset Holdings + MOODS
+                // Render Inventory
                 document.getElementById('inventory-list').innerHTML = Object.entries(data.inventory).map(([id, inv]) => `
                     <div class="border-b border-green-900/30 pb-2">
-                        <div class="flex justify-between items-center text-xs mb-1">
-                            <span class="font-bold text-white">${MOOD_MAP[data.moods[id] || 'Neutral']} ${id}</span>
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="font-bold text-white">${MOOD_MAP[data.moods[id]] || '😐'} ${id}</span>
                             <span class="text-green-400 font-bold">${data.ledger[id]} AC</span>
-                        </div>
-                        <div class="flex gap-2 text-[10px] opacity-70">
-                            <span>INF: ${inv.Info}</span> | <span>COM: ${inv.Compute}</span> | <span>RES: ${inv.Resources}</span>
                         </div>
                     </div>
                 `).join('');
 
-            } catch (e) { console.error("Sync error:", e); }
+            } catch (e) { console.error(e); }
         }
 
-        setInterval(refresh, 3000);
-        setInterval(() => { document.getElementById('world-clock').innerText = new Date().toLocaleTimeString(); }, 1000);
+        setInterval(refresh, 4000);
+        setInterval(() => { document.getElementById('world-clock').innerText = new Date().toLocaleTimeString('en-GB'); }, 1000);
     </script>
 </body>
 </html>
