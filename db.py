@@ -19,6 +19,11 @@ def _client():
     return _supabase
 
 
+def is_configured():
+    """True if Supabase URL and key are set."""
+    return _client() is not None
+
+
 def load_world():
     """Load world state from Supabase. Returns dict with same shape as world_data, or None if DB empty/unavailable."""
     sb = _client()

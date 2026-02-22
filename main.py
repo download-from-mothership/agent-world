@@ -215,7 +215,7 @@ async def start_world():
         world_data["confessionals"] = loaded["confessionals"]
         world_data["tribunal_treasury"] = loaded["tribunal_treasury"]
         print("World state loaded from Supabase.")
-    elif db._client():
+    elif db.is_configured():
         db.seed_default_world()
         print("Supabase empty: seeded default Genesis world.")
     async def loop():
