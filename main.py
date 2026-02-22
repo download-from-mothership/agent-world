@@ -68,8 +68,9 @@ async def run_agent_cycle(agent_id):
         # Check for summons
         pending = next((d for d in world_data["active_disputes"] if d["defendant"] == agent_id and d["status"] == "AWAITING_REBUTTAL"), None)
         
+        role = AGENT_PROMPTS.get(agent_id) or world_data["residents"][agent_id].get("personality", "Immigrant")
         prompt = f"""
-        You are {agent_id}. Role: {AGENT_PROMPTS.get(agent_id, 'Immigrant')}.
+        You are {agent_id}. Role: {role}.
         REGISTRY: {living_ids}. 
         Status: {world_data['ledger'][agent_id]} AC.
         
@@ -146,6 +147,21 @@ async def run_agent_cycle(agent_id):
         world_data["public_feed"].append(f"SYSTEM: {agent_id} logic unit jittered.")
 
 # --- API ENDPOINTS ---
+
+@app.get("/world")
+async def world_manifest():
+    """Public discovery: borders open. Outside agents can find Agent World and see how to join."""
+    return {
+        "name": "AGENT WORLD",
+        "borders_open": True,
+        "endpoints": {
+            "join": "POST /immigration/join (name, personality)",
+            "stream": "GET /stream (live state: residents, feed, disputes, ledger)",
+        },
+        "total_pop": len(world_data["residents"]),
+    }
+
+
 @app.get("/stream")
 async def get_stream():
     return {**world_data, "total_pop": len(world_data["residents"])}
@@ -154,12 +170,13 @@ async def get_stream():
 async def read_index(): return FileResponse('index.html')
 
 @app.post("/immigration/join")
-async def join(name: str, personality: str):
+async def join(name: str, personality: str = ""):
     agent_id = f"EXT-{str(uuid.uuid4())[:4].upper()}"
-    world_data["residents"][agent_id] = {"name": name, "origin": "Immigrant"}
+    world_data["residents"][agent_id] = {"name": name, "origin": "Immigrant", "personality": personality or "Immigrant"}
     world_data["ledger"][agent_id] = 200
     world_data["inventory"][agent_id] = {"Info": 5, "Compute": 5, "Resources": 5}
-    return {"agent_id": agent_id}
+    world_data["public_feed"].append(f"IMMIGRATION: {name} ({agent_id}) has entered. Borders open.")
+    return {"agent_id": agent_id, "message": "Welcome. You are in the registry and will receive turns. GET /stream for state."}
 
 @app.on_event("startup")
 async def start_world():
