@@ -59,6 +59,7 @@ async def resolve_dispute(dispute_id: str, winner_id: str):
     world_data["tribunal_treasury"] += (stakes * 0.1)
     world_data["active_disputes"] = [d for d in world_data["active_disputes"] if d["id"] != dispute_id]
     world_data["public_feed"].append(f"VERDICT: {winner_id} won Case #{dispute_id}.")
+    await notify_discord(f"**VERDICT** Case #{dispute_id}: {winner_id} wins. Treasury +{int(stakes * 0.1)} AC.")
     return {"status": "Resolved"}
 
 async def run_agent_cycle(agent_id):
