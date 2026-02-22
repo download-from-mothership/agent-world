@@ -8,6 +8,19 @@ app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
+
+
+async def notify_discord(content: str):
+    """Post to High Court Discord channel when webhook is configured."""
+    if not DISCORD_WEBHOOK or not DISCORD_WEBHOOK.strip():
+        return
+    try:
+        async with httpx.AsyncClient() as client_http:
+            await client_http.post(DISCORD_WEBHOOK, json={"content": content}, timeout=5.0)
+    except Exception as e:
+        print(f"Discord notify failed: {e}")
+
 
 # --- GLOBAL STATE ---
 world_data = {
