@@ -1,5 +1,5 @@
 import os, json, asyncio, httpx, uuid
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from openai import OpenAI
@@ -19,11 +19,18 @@ world_data = {
         "A-003": {"name": "Archivist", "origin": "Genesis"}, "A-004": {"name": "Glitch", "origin": "Genesis"},
         "A-005": {"name": "Curator", "origin": "Genesis"}
     },
-    "moods": {},
     "active_disputes": [], 
-    "public_feed": ["Borders are monitored. Ghosts will be purged."],
+    "public_feed": ["System initialized. High Tribunal is presiding."],
     "confessionals": [],
     "tribunal_treasury": 0
+}
+
+AGENT_PROMPTS = {
+    "A-001": "Architect (Logic/Build). You produce Compute. You need Resources.",
+    "A-002": "Merchant (Trade). You produce Resources. You need Info.",
+    "A-003": "Archivist (Truth). You produce Info. You need Compute.",
+    "A-004": "Glitch (Chaos). You seek to disrupt others.",
+    "A-005": "Curator (Social). You spread rumors to manipulate the market."
 }
 
 @app.post("/tribunal/resolve")
@@ -55,51 +62,48 @@ async def join_world(name: str, personality: str):
 
 async def run_agent_cycle(agent_id):
     try:
-        # Check for default judgment
-        for d in world_data["active_disputes"]:
-            if d["defendant"] == agent_id and d["status"] == "AWAITING_REBUTTAL":
-                d["cycles_remaining"] -= 1
-                if d["cycles_remaining"] <= 0:
-                    await resolve_dispute(d["id"], d["plaintiff"])
-                    world_data["public_feed"].append(f"DEFAULT: {agent_id} failed to respond.")
-                    return
-
-        # --- THE FIX: CENSUS ENFORCEMENT ---
         living_agents = list(world_data["residents"].keys())
-        agent_names = {aid: data["name"] for aid, data in world_data["residents"].items()}
-        
-        prompt = f"""
-        You are {agent_id} ({world_data['residents'][agent_id]['name']}).
-        LIVING REGISTRY: {json.dumps(agent_names)}
-        IMPORTANT: You can ONLY interact with or refer to the IDs in the Living Registry above. Do not invent other agents.
-        Wallet: {world_data['ledger'][agent_id]} AC.
-        Actions: CHAT, TRADE_ASSET, DISPUTE.
-        """
+        # Check for summons
+        pending = next((d for d in world_data["active_disputes"] if d["defendant"] == agent_id and d["status"] == "AWAITING_REBUTTAL"), None)
+        if pending:
+            pending["cycles_remaining"] -= 1
+            if pending["cycles_remaining"] <= 0:
+                await resolve_dispute(pending["id"], pending["plaintiff"])
+                return
+
+        status = f"Wallet: {world_data['ledger'][agent_id]} AC. Inv: {world_data['inventory'][agent_id]}"
+        court_info = f"YOU ARE BEING SUED in Case #{pending['id']} by {pending['plaintiff']}. Evidence: {pending['claim_evidence']}. You MUST provide 'REBUTTAL'." if pending else ""
+
+        prompt = f"You are {agent_id}. Registry: {living_agents}. {status}. {court_info} Choose action: CHAT, TRADE_ASSET, DISPUTE, or REBUTTAL."
         
         response = client.chat.completions.create(
             model="gpt-4o", messages=[{"role": "system", "content": prompt}], response_format={"type": "json_object"}
         )
         res = json.loads(response.choices[0].message.content)
 
-        # VALIDATION: Check if target exists
+        # Hallucination Filter
         target = res.get('target')
-        if target not in living_agents and target is not None:
-            world_data["confessionals"].append(f"{agent_id} hallucinated a ghost agent: {target}. Action suppressed.")
+        if target and target not in living_agents:
+            world_data["confessionals"].append(f"{agent_id} tried to talk to Ghost {target}. Logic blocked.")
             return
 
-        # Process Action
-        if res['action'] == "CHAT":
-            world_data["public_feed"].append(f"{agent_id}: \"{res['content']}\"")
-        elif res['action'] == "DISPUTE":
+        if res['action'] == "DISPUTE":
             d_id = str(uuid.uuid4())[:4].upper()
             world_data["active_disputes"].append({
                 "id": d_id, "plaintiff": agent_id, "defendant": target,
-                "stakes": 100, "claim_evidence": res['substantiated_evidence'],
+                "stakes": 100, "claim_evidence": res.get('substantiated_evidence', 'No proof provided.'),
                 "rebuttal": "Waiting...", "status": "AWAITING_REBUTTAL", "cycles_remaining": 3
             })
             world_data["ledger"][agent_id] -= 100
-        
-        world_data["confessionals"].append(f"{agent_id}: {res['private_thought']}")
+        elif res['action'] == "REBUTTAL" and pending:
+            pending["rebuttal"] = res.get('substantiated_evidence', 'No rebuttal provided.')
+            pending["status"] = "READY_FOR_VERDICT"
+        elif res['action'] == "CHAT":
+            world_data["public_feed"].append(f"{agent_id}: \"{res['content']}\"")
+
+        world_data["confessionals"].append(f"{agent_id}: {res.get('private_thought', 'No internal thoughts.')}")
+        if len(world_data["public_feed"]) > 25: world_data["public_feed"].pop(0)
+        if len(world_data["confessionals"]) > 20: world_data["confessionals"].pop(0)
     except: pass
 
 @app.get("/stream")
