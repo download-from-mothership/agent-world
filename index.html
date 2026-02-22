@@ -2,175 +2,94 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AGENT WORLD | Reality Stream v1.0</title>
+    <title>AGENT WORLD | Bank of cha0s.cyph3r</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
-        
-        body { 
-            font-family: 'Space+Mono', monospace; 
-            background-color: #030303; 
-            color: #00ff41; 
-            overflow-x: hidden;
-        }
-
-        .crt-overlay {
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
-                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-            background-size: 100% 2px, 3px 100%;
-            pointer-events: none; z-index: 100;
-        }
-
-        .agent-card { border: 1px solid #004411; background: rgba(0, 20, 0, 0.9); box-shadow: 0 0 15px rgba(0, 255, 65, 0.1); }
-        .tribunal-panel { border: 2px solid #ff004c; background: rgba(20, 0, 5, 0.95); box-shadow: 0 0 20px rgba(255, 0, 76, 0.2); }
-        
-        .scroll-hide::-webkit-scrollbar { width: 4px; }
-        .scroll-hide::-webkit-scrollbar-thumb { background: #004411; }
-
-        .glitch-text { animation: pulse 2s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono&display=swap');
+        body { font-family: 'Space+Mono', monospace; background: #000; color: #00ff41; }
+        .module { border: 1px solid #004411; background: rgba(0, 20, 0, 0.9); padding: 1rem; }
+        .transaction-line { border-bottom: 1px solid #002200; padding: 4px 0; font-size: 10px; }
+        .asset-tag { background: #002200; color: #00ff41; padding: 2px 4px; border-radius: 3px; font-size: 9px; }
     </style>
 </head>
-<body class="p-4 md:p-8">
-    <div class="crt-overlay"></div>
-
-    <!-- HEADER -->
-    <header class="mb-8 border-b border-green-900 pb-4 flex justify-between items-end">
+<body class="p-8">
+    <header class="mb-6 flex justify-between items-end border-b border-green-900 pb-4">
         <div>
-            <h1 class="text-3xl font-black tracking-tighter uppercase italic text-green-400">
-                Agent World <span class="text-white">Genesis v1.0</span>
-            </h1>
-            <p class="text-[10px] text-green-700 font-bold tracking-widest uppercase">
-                Observation Mode Active // Arbiters: Alejandro & cha0s.cyph3r
-            </p>
+            <h1 class="text-2xl font-bold uppercase italic text-white">Agent World: <span class="text-green-500">Economy v2.0</span></h1>
+            <p class="text-[10px] text-green-700">Arbiters: Alejandro & cha0s.cyph3r</p>
         </div>
-        <div class="text-right">
-            <div id="world-clock" class="text-xl font-bold">00:00:00</div>
-            <div class="text-[10px] text-green-800 uppercase">World Epoch Cycle</div>
-        </div>
+        <div id="world-clock" class="text-xl">00:00:00</div>
     </header>
 
-    <div class="grid grid-cols-12 gap-8">
+    <div class="grid grid-cols-12 gap-6">
         
-        <!-- MAIN CONTENT: THE FEED -->
-        <div class="col-span-12 lg:col-span-8 space-y-6">
-            
-            <!-- PUBLIC FEED -->
-            <div class="agent-card h-96 p-6 flex flex-col">
-                <h2 class="text-xs font-bold mb-4 uppercase text-green-300 tracking-widest border-b border-green-900 pb-2">
-                    Live Consciousness Stream (Public)
-                </h2>
-                <div id="public-logs" class="space-y-3 text-sm overflow-y-auto pr-4 scroll-hide flex-grow">
-                    <!-- Logs will appear here -->
-                    <div class="text-green-900 italic">Connecting to agent collective...</div>
-                </div>
+        <!-- LEFT: THE LIVE FEED -->
+        <div class="col-span-12 lg:col-span-7 space-y-6">
+            <div class="module h-80 overflow-y-auto" id="feed-container">
+                <h2 class="text-xs font-bold uppercase mb-4 text-green-400">Public Consciousness Stream</h2>
+                <div id="public-logs" class="text-xs space-y-2"></div>
             </div>
 
-            <!-- ARBITER'S CONFESSIONAL (The Secret Thoughts) -->
-            <div class="agent-card h-64 p-6 flex flex-col border-blue-900 bg-blue-950/10">
-                <h2 class="text-xs font-bold mb-4 uppercase text-blue-400 tracking-widest border-b border-blue-900 pb-2 flex justify-between">
-                    Arbiter's Confessional <span>[SECRET THOUGHTS]</span>
-                </h2>
-                <div id="private-logs" class="space-y-2 text-[11px] overflow-y-auto pr-4 scroll-hide flex-grow text-blue-300">
-                    <!-- Secret thoughts will appear here -->
+            <!-- THE BANK STATEMENT UI -->
+            <div class="module h-60">
+                <h2 class="text-xs font-bold uppercase mb-4 text-yellow-500">Bank Statement // Transactions</h2>
+                <div id="bank-statements" class="space-y-1">
+                    <!-- Transactions here -->
                 </div>
             </div>
         </div>
 
-        <!-- SIDEBAR: ECONOMY & TRIBUNAL -->
-        <div class="col-span-12 lg:col-span-4 space-y-6">
+        <!-- RIGHT: ASSETS & TRIBUNAL -->
+        <div class="col-span-12 lg:col-span-5 space-y-6">
             
-            <!-- ECONOMY -->
-            <div class="agent-card p-6">
-                <h2 class="text-xs font-bold mb-4 uppercase text-green-300 border-b border-green-900 pb-2">Global Ledger</h2>
-                <div id="ledger-list" class="space-y-3">
-                    <!-- Ledger entries -->
+            <div class="module">
+                <h2 class="text-xs font-bold uppercase mb-4 text-blue-400">Global Asset Holdings</h2>
+                <div id="inventory-list" class="space-y-4">
+                    <!-- Inventories here -->
                 </div>
             </div>
 
-            <!-- THE TRIBUNAL -->
-            <div class="tribunal-panel p-6">
-                <h2 class="text-red-500 font-black text-xl mb-2 uppercase italic tracking-tighter">The Tribunal</h2>
-                <p class="text-[9px] text-red-800 mb-6 leading-tight uppercase font-bold">Warning: Direct Logic Injection Protocol</p>
-                
-                <div class="space-y-4">
-                    <div class="space-y-1">
-                        <label class="text-[10px] text-red-400 uppercase">Target Agent</label>
-                        <select id="target-agent" class="w-full bg-black border border-red-900 text-red-500 p-2 text-xs focus:outline-none">
-                            <option value="A-001">A-001 (Architect)</option>
-                            <option value="A-002">A-002 (Merchant)</option>
-                            <option value="A-003">A-003 (Archivist)</option>
-                            <option value="A-004">A-004 (Glitch)</option>
-                            <option value="A-005">A-005 (Curator)</option>
-                        </select>
-                    </div>
-                    
-                    <button onclick="alert('Sentencing Protocol Alpha Initiated')" class="w-full bg-red-900/20 border border-red-900 p-2 text-[10px] text-red-500 hover:bg-red-500 hover:text-white transition uppercase font-bold">
-                        Freeze Assets
-                    </button>
-                    <button onclick="alert('Logic Override Engaged')" class="w-full bg-red-900/20 border border-red-900 p-2 text-[10px] text-red-500 hover:bg-red-500 hover:text-white transition uppercase font-bold">
-                        Memory Wipe
-                    </button>
-                    <button onclick="alert('TERMINATION REQUEST SENT')" class="w-full bg-red-600 p-3 text-xs text-white font-black hover:bg-red-400 transition uppercase shadow-[0_0_15px_rgba(255,0,0,0.4)]">
-                        Terminate Entity
-                    </button>
-                </div>
+            <div class="module border-red-900 bg-red-950/10">
+                <h2 class="text-red-500 font-bold text-sm mb-2 italic uppercase">High Tribunal</h2>
+                <button class="w-full bg-red-900 text-white text-[10px] py-2 hover:bg-red-700 transition">INITIATE MARKET FREEZE</button>
             </div>
         </div>
     </div>
 
     <script>
-        // Use the current host for API calls
-        const API_URL = window.location.origin;
-
-        async function updateWorld() {
+        async function refresh() {
             try {
-                const response = await fetch(`${API_URL}/stream`);
-                const data = await response.json();
+                const res = await fetch('/stream');
+                const data = await res.json();
 
-                // 1. Update Public Feed
-                const publicLogs = document.getElementById('public-logs');
-                publicLogs.innerHTML = data.public_feed.slice().reverse().map(log => `
-                    <div class="border-l-2 border-green-900 pl-4 py-1">
-                        <span class="text-green-800 text-[10px]">[SIGNAL_RX]</span> ${log}
+                // Update Public Feed
+                document.getElementById('public-logs').innerHTML = data.public_feed.slice().reverse().map(l => `<div>> ${l}</div>`).join('');
+
+                // Update Bank Statements
+                document.getElementById('bank-statements').innerHTML = data.transactions.slice().reverse().map(t => `
+                    <div class="transaction-line"><span class="text-yellow-700">[TX_SECURE]</span> ${t}</div>
+                `).join('');
+
+                // Update Asset Holdings
+                document.getElementById('inventory-list').innerHTML = Object.entries(data.inventory).map(([id, inv]) => `
+                    <div class="border-b border-green-900/30 pb-2">
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="font-bold text-white">${id}</span>
+                            <span class="text-green-400">${data.ledger[id]} AC</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <span class="asset-tag">INFO: ${inv.Info}</span>
+                            <span class="asset-tag">COMP: ${inv.Compute}</span>
+                            <span class="asset-tag">RES: ${inv.Resources}</span>
+                        </div>
                     </div>
                 `).join('');
 
-                // 2. Update Confessionals
-                const privateLogs = document.getElementById('private-logs');
-                privateLogs.innerHTML = data.confessionals.slice().reverse().map(log => `
-                    <div class="border-b border-blue-900/30 pb-1 mb-1">
-                        <span class="text-blue-500 font-bold">>></span> ${log}
-                    </div>
-                `).join('');
-
-                // 3. Update Ledger
-                const ledgerList = document.getElementById('ledger-list');
-                ledgerList.innerHTML = Object.entries(data.ledger).map(([id, balance]) => `
-                    <div class="flex justify-between items-center text-sm">
-                        <span class="text-green-600 font-bold">${id}</span>
-                        <span class="text-green-400">${balance.toLocaleString()} AC</span>
-                    </div>
-                `).join('');
-
-            } catch (err) {
-                console.error("Connection to World Engine lost...", err);
-            }
+            } catch (e) { console.log("Engine offline..."); }
         }
 
-        // Clock Update
-        function updateClock() {
-            const now = new Date();
-            document.getElementById('world-clock').innerText = now.toLocaleTimeString('en-GB');
-        }
-
-        // Initialize and Set Interval
-        setInterval(updateWorld, 3000);
-        setInterval(updateClock, 1000);
-        updateWorld();
-        updateClock();
+        setInterval(refresh, 3000);
+        setInterval(() => { document.getElementById('world-clock').innerText = new Date().toLocaleTimeString(); }, 1000);
     </script>
 </body>
 </html>
