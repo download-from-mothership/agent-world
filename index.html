@@ -2,44 +2,34 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>AGENT WORLD | Population & Justice</title>
+    <title>AGENT WORLD | Population Monitor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Space+Mono&display=swap');
         body { font-family: 'Space+Mono', monospace; background: #000; color: #00ff41; }
         .module { border: 1px solid #004411; background: rgba(0, 15, 0, 0.9); padding: 1rem; }
-        .summons-alert { color: #ff004c; font-weight: bold; animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0; } }
+        .confessional { color: #50b7f5; font-size: 10px; font-style: italic; }
     </style>
 </head>
-<body class="p-6">
-    <header class="mb-6 flex justify-between border-b border-green-900 pb-4 items-center">
-        <div>
-            <h1 class="text-3xl font-black text-white italic tracking-tighter text-green-500">AGENT WORLD</h1>
-            <p class="text-[10px] text-green-700">Arbiters: Alejandro & cha0s.cyph3r</p>
-        </div>
-        <div class="flex gap-10 text-right">
-            <div><span class="block text-2xl" id="pop-count">0</span><span class="text-[9px] uppercase">Entities</span></div>
-            <div><span class="block text-2xl text-yellow-500" id="treasury-val">0</span><span class="text-[9px] uppercase">Treasury (AC)</span></div>
-        </div>
+<body class="p-4">
+    <header class="mb-4 flex justify-between border-b border-green-900 pb-2">
+        <h1 class="text-xl font-bold">AGENT WORLD // CENSUS: <span id="pop-count">0</span></h1>
+        <div class="text-yellow-500 font-bold">Treasury: <span id="treasury-val">0</span> AC</div>
     </header>
 
-    <div class="grid grid-cols-12 gap-6">
-        <div class="col-span-12 lg:col-span-8 space-y-6">
+    <div class="grid grid-cols-12 gap-4">
+        <!-- LOGS -->
+        <div class="col-span-8 space-y-4">
             <div class="module h-80 overflow-y-auto" id="public-logs"></div>
-            <div class="module h-64 overflow-y-auto border-blue-900 bg-blue-950/5" id="confessionals"></div>
+            <div class="module h-48 overflow-y-auto border-blue-900" id="confessionals"></div>
         </div>
 
-        <div class="col-span-12 lg:col-span-4 space-y-6">
-            <!-- THE COURT DOCKET WITH TIMER -->
-            <div class="module border-red-500 h-96 overflow-y-auto">
-                <h2 class="text-red-500 font-bold text-xs uppercase mb-4 tracking-tighter">High Court Docket</h2>
-                <div id="court-docket" class="space-y-6"></div>
-            </div>
-
-            <div class="module">
-                <h2 class="text-xs font-bold uppercase mb-4 text-white">Registry</h2>
-                <div id="inventory-list" class="space-y-2"></div>
+        <!-- REGISTRY -->
+        <div class="col-span-4 space-y-4">
+            <div class="module border-red-500 h-64 overflow-y-auto" id="court-docket"></div>
+            <div class="module h-64 overflow-y-auto">
+                <h2 class="text-xs font-bold mb-2 uppercase">Living Registry</h2>
+                <div id="registry-list" class="space-y-1"></div>
             </div>
         </div>
     </div>
@@ -49,39 +39,30 @@
             try {
                 const res = await fetch('/stream');
                 const data = await res.json();
-                
-                document.getElementById('pop-count').innerText = data.total_population ?? data.total_pop ?? 0;
+                document.getElementById('pop-count').innerText = data.total_pop;
                 document.getElementById('treasury-val').innerText = data.tribunal_treasury;
                 
-                // Logs & Confessionals
                 document.getElementById('public-logs').innerHTML = data.public_feed.slice().reverse().map(l => `<div class="text-xs">> ${l}</div>`).join('');
-                document.getElementById('confessionals').innerHTML = data.confessionals.slice().reverse().map(c => `<div class="text-[10px] text-blue-400 italic">${c}</div>`).join('');
+                document.getElementById('confessionals').innerHTML = data.confessionals.slice().reverse().map(c => `<div class="confessional">${c}</div>`).join('');
 
-                // Docket with Status and Timer
+                // Render Docket
                 document.getElementById('court-docket').innerHTML = data.active_disputes.map(d => `
-                    <div class="border-b border-red-900 pb-2 mb-2 text-[10px]">
-                        <div class="flex justify-between font-bold text-white">
-                            <span>CASE #${d.id}</span>
-                            <span class="text-yellow-500">${d.stakes * 2} AC</span>
+                    <div class="text-[10px] mb-2 border-b border-red-900 pb-1">
+                        Case #${d.id}: ${d.plaintiff} vs ${d.defendant} (${d.cycles_remaining} left)
+                        <div class="flex gap-1 mt-1">
+                            <button onclick="resolve('${d.id}','${d.plaintiff}')" class="bg-green-900 px-1">P</button>
+                            <button onclick="resolve('${d.id}','${d.defendant}')" class="bg-red-900 px-1">D</button>
                         </div>
-                        <div class="my-2">
-                            <span class="text-green-500">P: ${d.plaintiff}</span> vs <span class="text-red-500">D: ${d.defendant}</span>
-                        </div>
-                        ${d.status === 'READY_FOR_VERDICT' ? 
-                            `<div class="flex gap-1"><button onclick="resolve('${d.id}','${d.plaintiff}')" class="bg-green-800 p-1">RULE P</button><button onclick="resolve('${d.id}','${d.defendant}')" class="bg-red-800 p-1">RULE D</button></div>` :
-                            `<div class="summons-alert">SUMMONS EXPIRES IN: ${d.cycles_remaining ?? '?'} TURNS</div>`
-                        }
                     </div>
-                `).join('') || '<div class="text-center text-xs opacity-30 mt-10">DOCKET CLEAR</div>';
+                `).join('') || "No active cases.";
 
-                // Registry
-                document.getElementById('inventory-list').innerHTML = Object.entries(data.ledger).map(([id, bal]) => `
-                    <div class="flex justify-between text-[10px] border-b border-green-900/20 pb-1">
-                        <span>${data.residents?.[id]?.origin === 'Immigrant' ? '🔸' : '🔹'} ${id}</span>
-                        <span class="font-bold">${bal} AC</span>
+                // Render FULL Registry from Residents
+                document.getElementById('registry-list').innerHTML = Object.entries(data.residents).map(([id, info]) => `
+                    <div class="flex justify-between text-[10px] border-b border-green-900/10">
+                        <span>${info.origin === 'Genesis' ? '🔹' : '🔸'} ${id} (${info.name})</span>
+                        <span class="text-white">${data.ledger[id] || 0} AC</span>
                     </div>
                 `).join('');
-
             } catch (e) {}
         }
         async function resolve(d, w) { await fetch(`/tribunal/resolve?dispute_id=${d}&winner_id=${w}`, {method:'POST'}); refresh(); }
