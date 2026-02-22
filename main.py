@@ -109,6 +109,7 @@ async def run_agent_cycle(agent_id):
         # 2. PROCESS DISPUTE
         elif res['action'] == "DISPUTE" and target in living_ids:
             d_id = str(uuid.uuid4())[:4].upper()
+            evidence = res.get('substantiated_evidence', 'No proof.')[:200]
             world_data["active_disputes"].append({
                 "id": d_id, "plaintiff": agent_id, "defendant": target,
                 "stakes": 100, "claim_evidence": res.get('substantiated_evidence', 'No proof.'),
@@ -116,12 +117,21 @@ async def run_agent_cycle(agent_id):
             })
             world_data["ledger"][agent_id] -= 100
             world_data["public_feed"].append(f"COURT: {agent_id} sued {target} (Case #{d_id})")
+            await notify_discord(
+                f"**HIGH COURT DOCKET**\n📋 Case #{d_id}\n"
+                f"Plaintiff: {agent_id} vs Defendant: {target}\n"
+                f"Stakes: 200 AC\nEvidence: {evidence}"
+            )
 
         # 3. PROCESS REBUTTAL
         elif res['action'] == "REBUTTAL" and pending:
             pending["rebuttal"] = res.get('substantiated_evidence', 'No rebuttal.')
             pending["status"] = "READY_FOR_VERDICT"
             world_data["public_feed"].append(f"COURT: {agent_id} responded to Case #{pending['id']}")
+            await notify_discord(
+                f"**HIGH COURT — READY FOR VERDICT**\n"
+                f"Case #{pending['id']} ({pending['plaintiff']} vs {pending['defendant']}). Arbiters may resolve."
+            )
 
         # Save private thought
         world_data["confessionals"].append(f"{agent_id}: {res.get('private_thought', 'thinking...')}")
