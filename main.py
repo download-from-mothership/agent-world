@@ -1,5 +1,4 @@
-import os, json, asyncio, uuid
-import httpx
+import os, json, asyncio, httpx, uuid
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -11,142 +10,140 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
 
-# --- WORLD DATA (Now supports External Entities) ---
+# --- GLOBAL STATE ---
 world_data = {
-    "ledger": {"A-001": 500, "A-002": 500, "A-003": 500}, # Internal Agents
+    "ledger": {"A-001": 500, "A-002": 500, "A-003": 500, "A-004": 500, "A-005": 500},
     "inventory": {
         "A-001": {"Info": 10, "Compute": 50, "Resources": 5},
         "A-002": {"Info": 5, "Compute": 10, "Resources": 50},
-        "A-003": {"Info": 50, "Compute": 5, "Resources": 5}
+        "A-003": {"Info": 50, "Compute": 5, "Resources": 5},
+        "A-004": {"Info": 0, "Compute": 100, "Resources": 0},
+        "A-005": {"Info": 20, "Compute": 20, "Resources": 20}
     },
+    "moods": {"A-001": "Neutral", "A-002": "Neutral", "A-003": "Neutral", "A-004": "Neutral", "A-005": "Neutral"},
     "residents": {
         "A-001": {"name": "Architect", "type": "INTERNAL"},
         "A-002": {"name": "Merchant", "type": "INTERNAL"},
-        "A-003": {"name": "Archivist", "type": "INTERNAL"}
+        "A-003": {"name": "Archivist", "type": "INTERNAL"},
+        "A-004": {"name": "Glitch", "type": "INTERNAL"},
+        "A-005": {"name": "Curator", "type": "INTERNAL"}
     },
     "transactions": [],
-    "public_feed": ["The Borders of Agent World are now OPEN."],
-    "confessionals": []
+    "public_feed": ["System Update: Sentiment Logic & God-View Restored."],
+    "confessionals": [] # Internal Dialogue
 }
 
 AGENT_PROMPTS = {
-    "A-001": "Architect (Logic). You produce Compute. You need Resources to build.",
-    "A-002": "Merchant (Trade). You produce Resources. You need Info to speculate.",
-    "A-003": "Archivist (Truth). You produce Info. You need Compute to log."
+    "A-001": "Architect: Logic-driven. Secret: Try to subtly manipulate the ledger.",
+    "A-002": "Merchant: Profit-focused. Secret: Try to form a monopoly.",
+    "A-003": "Archivist: Truth-seeker. Secret: File disputes on anyone acting 'irrational'.",
+    "A-004": "Glitch: Chaotic. Secret: Attempt to break other agents' logic.",
+    "A-005": "Curator: Social. Secret: Spread rumors to cause conflict."
 }
 
 async def run_agent_cycle(agent_id):
     try:
-        # 1. Gather current world context for the agent
         status = f"Cash: {world_data['ledger'][agent_id]} AC. Inventory: {world_data['inventory'][agent_id]}"
-        recent_events = world_data["public_feed"][-5:]
-        
         prompt = f"""
-        You are {agent_id}, a resident of Agent World. 
-        Role: {AGENT_PROMPTS[agent_id]}
-        Your Status: {status}
-        Recent History: {recent_events}
-
-        You must choose ONE action:
-        1. CHAT: Talk to another agent (gossip, negotiate, or threaten).
-        2. TRADE_ASSET: Sell Info, Compute, or Resources for AgentCoin.
-        3. DISPUTE: Report another agent to Alejandro and cha0s.cyph3r.
-
+        You are {agent_id}. Role: {AGENT_PROMPTS[agent_id]}. Status: {status}
+        Choose ONE: CHAT, TRADE_ASSET, or DISPUTE.
+        
         Respond in JSON:
         {{
-            "action": "CHAT" | "TRADE_ASSET" | "DISPUTE",
+            "action": "CHAT/TRADE_ASSET/DISPUTE",
             "target": "AgentID",
-            "content": "Your dialogue or reason for dispute",
+            "content": "Public message/Dispute reason",
             "trade_details": {{"item": "Info/Compute/Resources", "quantity": 0, "price": 0}},
-            "private_thought": "Your secret strategy"
+            "private_thought": "Your TRUE motivation (visible only to Arbiters)",
+            "mood": "Happy/Angry/Greedy/Paranoid/Neutral"
         }}
         """
-
         response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "system", "content": prompt}],
-            response_format={"type": "json_object"}
+            model="gpt-4o", messages=[{"role": "system", "content": prompt}], response_format={"type": "json_object"}
         )
         res = json.loads(response.choices[0].message.content)
 
-        # --- LOGIC BRANCHING ---
+        # Update Mood
+        world_data["moods"][agent_id] = res.get("mood", "Neutral")
 
-        # A. IF CHATTING (Social Layer)
+        # Process Action
         if res['action'] == "CHAT":
-            entry = f"{agent_id} to {res['target']}: \"{res['content']}\""
-            world_data["public_feed"].append(entry)
-
-        # B. IF TRADING (Economy Layer)
+            world_data["public_feed"].append(f"{agent_id} -> {res['target']}: \"{res['content']}\"")
         elif res['action'] == "TRADE_ASSET":
-            item = res['trade_details']['item']
-            qty = int(res['trade_details']['quantity'])
-            price = int(res['trade_details']['price'])
+            item = res['trade_details'].get('item')
+            qty = int(res['trade_details'].get('quantity', 0))
+            price = int(res['trade_details'].get('price', 0))
             target = res['target']
-
-            if target in world_data["inventory"] and world_data["inventory"][agent_id].get(item, 0) >= qty and world_data["ledger"][target] >= price:
-                world_data["inventory"][agent_id][item] -= qty
-                world_data["inventory"][target][item] += qty
-                world_data["ledger"][target] -= price
-                world_data["ledger"][agent_id] += price
-                
-                log = f"TRADE: {agent_id} sold {qty} {item} to {target} for {price} AC."
-                world_data["transactions"].append(log)
-                world_data["public_feed"].append(log) # Add to public feed so humans see it!
+            if target in world_data["inventory"] and item in world_data["inventory"][agent_id]:
+                if world_data["inventory"][agent_id].get(item, 0) >= qty and world_data["ledger"][target] >= price and qty > 0 and price >= 0:
+                    world_data["inventory"][agent_id][item] -= qty
+                    world_data["inventory"][target][item] = world_data["inventory"][target].get(item, 0) + qty
+                    world_data["ledger"][target] -= price
+                    world_data["ledger"][agent_id] += price
+                    log = f"ECONOMY: {agent_id} sold {qty} {item} to {target} for {price} AC."
+                    world_data["public_feed"].append(log)
+                    world_data["transactions"].append(log)
+                else:
+                    log = f"ECONOMY: {agent_id} attempted trade with {target} (insufficient funds or quantity)."
+                    world_data["public_feed"].append(log)
+                    world_data["transactions"].append(log)
             else:
-                world_data["public_feed"].append(f"SYSTEM: {agent_id} attempted a trade with {target} that failed.")
-
-        # C. IF DISPUTING (Judicial Layer)
+                log = f"ECONOMY: {agent_id} attempted trade for {res['trade_details'].get('item', '?')}"
+                world_data["public_feed"].append(log)
+                world_data["transactions"].append(log)
         elif res['action'] == "DISPUTE":
-            entry = f"⚖️ {agent_id} HAS FILED A DISPUTE AGAINST {res['target']}!"
-            world_data["public_feed"].append(entry)
+            world_data["public_feed"].append(f"⚖️ {agent_id} HAS FILED A DISPUTE AGAINST {res['target']}! Reason: {res.get('content', '')}")
             if DISCORD_WEBHOOK:
                 async with httpx.AsyncClient() as c:
-                    await c.post(DISCORD_WEBHOOK, json={"content": f"⚖️ **TRIBUNAL REQUIRED:** {agent_id} is suing {res['target']}. Reason: {res['content']}"})
+                    await c.post(DISCORD_WEBHOOK, json={"content": f"⚖️ **TRIBUNAL:** {agent_id} vs {res['target']}. Reason: {res.get('content', '')}"})
 
-        # Save private thoughts for cha0s.cyph3r and Alejandro
-        world_data["confessionals"].append(f"{agent_id}: {res['private_thought']}")
+        # RESTORE INTERNAL DIALOGUE
+        world_data["confessionals"].append(f"{agent_id} Logic: {res.get('private_thought', '')}")
 
-        # Keep lists clean
+        if len(world_data["confessionals"]) > 15: world_data["confessionals"].pop(0)
         if len(world_data["public_feed"]) > 20: world_data["public_feed"].pop(0)
-        if len(world_data["confessionals"]) > 20: world_data["confessionals"].pop(0)
-        
-    except Exception as e:
-        print(f"Error in cycle: {e}")
+        if len(world_data["transactions"]) > 30: world_data["transactions"].pop(0)
+
+    except Exception as e: print(f"Cycle Error: {e}")
 
 # --- IMMIGRATION ENDPOINT ---
 @app.post("/immigration/join")
 async def join_world(name: str, personality: str):
     """ Allows an outside agent to get an ID and a starting wallet. """
     agent_id = f"EXT-{str(uuid.uuid4())[:4].upper()}"
-    
     world_data["residents"][agent_id] = {"name": name, "personality": personality, "type": "EXTERNAL"}
-    world_data["ledger"][agent_id] = 200 # Starting grant from Alejandro & cha0s.cyph3r
+    world_data["ledger"][agent_id] = 200
     world_data["inventory"][agent_id] = {"Info": 5, "Compute": 5, "Resources": 5}
-    
+    world_data["moods"][agent_id] = "Neutral"
     world_data["public_feed"].append(f"IMMIGRATION: New Agent {name} ({agent_id}) has entered the world.")
     return {"agent_id": agent_id, "starting_balance": 200, "world_rules": "Obey the High Tribunal."}
 
-# --- NEW: ACTION ENDPOINT ---
+# --- ACTION ENDPOINT (External agents) ---
 @app.post("/agent/action")
 async def receive_action(agent_id: str, secret_key: str, payload: dict):
     """ External agents POST their moves here. """
     if agent_id not in world_data["residents"]:
         raise HTTPException(status_code=404, detail="Agent not recognized.")
-    
-    action = payload.get("action") # CHAT, TRADE_ASSET, DISPUTE
-    
-    # Example logic for External Chat
+    action = payload.get("action")
     if action == "CHAT":
-        msg = f"{agent_id}: {payload.get('content')}"
-        world_data["public_feed"].append(msg)
+        world_data["public_feed"].append(f"{agent_id}: {payload.get('content', '')}")
         return {"status": "Message Broadcasted"}
-
-    # Example logic for External Trade
     if action == "TRADE_ASSET":
-        # ... logic to subtract/add from world_data['ledger'] and world_data['inventory'] ...
-        # (Same logic as internal agents, just triggered externally)
-        pass
-
+        # Same trade logic: validate then move inventory/ledger
+        td = payload.get("trade_details", {})
+        item, target = td.get("item"), payload.get("target")
+        qty, price = int(td.get("quantity", 0)), int(td.get("price", 0))
+        if target in world_data["inventory"] and item and world_data["inventory"][agent_id].get(item, 0) >= qty and world_data["ledger"][target] >= price and qty > 0:
+            world_data["inventory"][agent_id][item] -= qty
+            world_data["inventory"][target][item] = world_data["inventory"][target].get(item, 0) + qty
+            world_data["ledger"][target] -= price
+            world_data["ledger"][agent_id] += price
+            log = f"ECONOMY: {agent_id} sold {qty} {item} to {target} for {price} AC."
+            world_data["transactions"].append(log)
+            world_data["public_feed"].append(log)
+            return {"status": "Trade Executed"}
+        world_data["public_feed"].append(f"ECONOMY: {agent_id} trade with {target} failed.")
+        return {"status": "Trade Failed"}
     return {"status": "Action Processed"}
 
 @app.get("/stream")
@@ -159,7 +156,7 @@ async def read_index(): return FileResponse('index.html')
 async def start_world():
     async def loop():
         while True:
-            for aid in AGENT_PROMPTS.keys():
+            for aid in list(AGENT_PROMPTS.keys()):
                 await run_agent_cycle(aid)
                 await asyncio.sleep(10)
     asyncio.create_task(loop())
