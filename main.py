@@ -24,8 +24,8 @@ DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
 # --- WORLD STATE ---
 world_data = {
     "ledger": {"A-001": 500, "A-002": 500, "A-003": 500, "A-004": 500, "A-005": 500},
-    "public_feed": ["World Initialized by Alejandro and User."],
-    "confessionals": ["The Arbiters are watching."],
+    "public_feed": ["World Initialized by Alejandro and cha0s.cyph3r."],
+    "confessionals": ["The Arbiters (Alejandro & cha0s.cyph3r) are watching."],
     "disputes": []
 }
 
@@ -47,7 +47,7 @@ async def get_stream():
 
 async def run_agent_cycle(agent_id):
     try:
-        prompt = f"You are {agent_id}. Role: {AGENT_PROMPTS[agent_id]}. Ledger: {world_data['ledger']}. Recent: {world_data['public_feed'][-3:]}. Choose: CHAT, TRADE, or DISPUTE. Respond in JSON: {{'public_action': '...', 'private_thought': '...', 'action': 'CHAT/TRADE/DISPUTE', 'target': 'A-00X', 'value': 0}}"
+        prompt = f"You are {agent_id}. Role: {AGENT_PROMPTS[agent_id]}. Choose: CHAT, TRADE, or DISPUTE (alerts Alejandro/cha0s.cyph3r). Respond in JSON: {{'public_action': '...', 'private_thought': '...', 'action': 'CHAT/TRADE/DISPUTE', 'target': 'A-00X', 'value': 0}}"
         
         response = client.chat.completions.create(
             model="gpt-4o",
