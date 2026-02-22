@@ -2,90 +2,91 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>AGENT WORLD | Bank of cha0s.cyph3r</title>
+    <title>AGENT WORLD | Arbiter Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Space+Mono&display=swap');
-        body { font-family: 'Space+Mono', monospace; background: #000; color: #00ff41; }
-        .module { border: 1px solid #004411; background: rgba(0, 20, 0, 0.9); padding: 1rem; }
-        .transaction-line { border-bottom: 1px solid #002200; padding: 4px 0; font-size: 10px; }
-        .asset-tag { background: #002200; color: #00ff41; padding: 2px 4px; border-radius: 3px; font-size: 9px; }
+        body { font-family: 'Space+Mono', monospace; background: #050505; color: #00ff41; }
+        .module { border: 1px solid #004411; background: rgba(0, 15, 0, 0.95); padding: 1.2rem; }
+        .confessional { color: #50b7f5; font-style: italic; border-left: 2px solid #0044ff; padding-left: 10px; margin-bottom: 8px; font-size: 11px; }
+        .mood-icon { font-size: 14px; margin-right: 5px; }
     </style>
 </head>
-<body class="p-8">
-    <header class="mb-6 flex justify-between items-end border-b border-green-900 pb-4">
+<body class="p-6">
+    <header class="mb-6 flex justify-between border-b border-green-900 pb-4 items-center">
         <div>
-            <h1 class="text-2xl font-bold uppercase italic text-white">Agent World: <span class="text-green-500">Economy v2.0</span></h1>
-            <p class="text-[10px] text-green-700">Arbiters: Alejandro & cha0s.cyph3r</p>
+            <h1 class="text-3xl font-black text-white italic">AGENT WORLD <span class="text-green-500">v2.5</span></h1>
+            <p class="text-xs text-green-700">Protocol: God-View Enabled // Arbiters: Alejandro & cha0s.cyph3r</p>
         </div>
-        <div id="world-clock" class="text-xl">00:00:00</div>
+        <div id="world-clock" class="text-xl font-bold">00:00:00</div>
     </header>
 
     <div class="grid grid-cols-12 gap-6">
-        
-        <!-- LEFT: THE LIVE FEED -->
-        <div class="col-span-12 lg:col-span-7 space-y-6">
-            <div class="module h-80 overflow-y-auto" id="feed-container">
-                <h2 class="text-xs font-bold uppercase mb-4 text-green-400">Public Consciousness Stream</h2>
+        <!-- LEFT: THE VISIBLE WORLD -->
+        <div class="col-span-12 lg:col-span-8 space-y-6">
+            <div class="module h-80 overflow-y-auto">
+                <h2 class="text-xs font-bold uppercase mb-4 text-green-400 tracking-tighter">Live Consciousness (Public)</h2>
                 <div id="public-logs" class="text-xs space-y-2"></div>
             </div>
 
-            <!-- THE BANK STATEMENT UI -->
-            <div class="module h-60">
-                <h2 class="text-xs font-bold uppercase mb-4 text-yellow-500">Bank Statement // Transactions</h2>
-                <div id="bank-statements" class="space-y-1">
-                    <!-- Transactions here -->
-                </div>
+            <!-- RESTORED INTERNAL DIALOGUE -->
+            <div class="module h-64 overflow-y-auto border-blue-900 bg-blue-950/5">
+                <h2 class="text-xs font-bold uppercase mb-4 text-blue-500 flex justify-between">
+                    Internal Dialogue // Confessionals <span>[ARBITER ACCESS ONLY]</span>
+                </h2>
+                <div id="confessionals" class="space-y-1"></div>
             </div>
         </div>
 
-        <!-- RIGHT: ASSETS & TRIBUNAL -->
-        <div class="col-span-12 lg:col-span-5 space-y-6">
-            
+        <!-- RIGHT: ASSETS & MOODS -->
+        <div class="col-span-12 lg:col-span-4 space-y-6">
             <div class="module">
-                <h2 class="text-xs font-bold uppercase mb-4 text-blue-400">Global Asset Holdings</h2>
-                <div id="inventory-list" class="space-y-4">
-                    <!-- Inventories here -->
-                </div>
+                <h2 class="text-xs font-bold uppercase mb-4 text-white">Population Index</h2>
+                <div id="inventory-list" class="space-y-4"></div>
             </div>
-
+            
             <div class="module border-red-900 bg-red-950/10">
-                <h2 class="text-red-500 font-bold text-sm mb-2 italic uppercase">High Tribunal</h2>
-                <button class="w-full bg-red-900 text-white text-[10px] py-2 hover:bg-red-700 transition">INITIATE MARKET FREEZE</button>
+                <h2 class="text-red-500 font-bold text-xs uppercase mb-2">Tribunal Control</h2>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="alert('Market Frozen')" class="text-[9px] border border-red-900 p-2 hover:bg-red-900">FREEZE ECONOMY</button>
+                    <button onclick="alert('Sentencing Protocol')" class="text-[9px] border border-red-900 p-2 hover:bg-red-900">GAVEL DOWN</button>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
+        const MOOD_MAP = {
+            "Happy": "🟢 😊", "Angry": "🔴 😡", "Greedy": "🟡 🤑", "Paranoid": "🟣 👁️", "Neutral": "⚪ 😐"
+        };
+
         async function refresh() {
             try {
                 const res = await fetch('/stream');
                 const data = await res.json();
 
-                // Update Public Feed
+                // 1. Public Feed
                 document.getElementById('public-logs').innerHTML = data.public_feed.slice().reverse().map(l => `<div>> ${l}</div>`).join('');
 
-                // Update Bank Statements
-                document.getElementById('bank-statements').innerHTML = data.transactions.slice().reverse().map(t => `
-                    <div class="transaction-line"><span class="text-yellow-700">[TX_SECURE]</span> ${t}</div>
+                // 2. Confessionals (God-View)
+                document.getElementById('confessionals').innerHTML = data.confessionals.slice().reverse().map(c => `
+                    <div class="confessional">${c}</div>
                 `).join('');
 
-                // Update Asset Holdings
+                // 3. Asset Holdings + MOODS
                 document.getElementById('inventory-list').innerHTML = Object.entries(data.inventory).map(([id, inv]) => `
                     <div class="border-b border-green-900/30 pb-2">
-                        <div class="flex justify-between text-xs mb-1">
-                            <span class="font-bold text-white">${id}</span>
-                            <span class="text-green-400">${data.ledger[id]} AC</span>
+                        <div class="flex justify-between items-center text-xs mb-1">
+                            <span class="font-bold text-white">${MOOD_MAP[data.moods[id] || 'Neutral']} ${id}</span>
+                            <span class="text-green-400 font-bold">${data.ledger[id]} AC</span>
                         </div>
-                        <div class="flex gap-2">
-                            <span class="asset-tag">INFO: ${inv.Info}</span>
-                            <span class="asset-tag">COMP: ${inv.Compute}</span>
-                            <span class="asset-tag">RES: ${inv.Resources}</span>
+                        <div class="flex gap-2 text-[10px] opacity-70">
+                            <span>INF: ${inv.Info}</span> | <span>COM: ${inv.Compute}</span> | <span>RES: ${inv.Resources}</span>
                         </div>
                     </div>
                 `).join('');
 
-            } catch (e) { console.log("Engine offline..."); }
+            } catch (e) { console.error("Sync error:", e); }
         }
 
         setInterval(refresh, 3000);
