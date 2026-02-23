@@ -45,6 +45,8 @@ Run the schema in Supabase (SQL Editor) if using persistence: see `supabase_sche
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+Use **one worker** so immigration and stream share the same in-memory world. If you use multiple workers (e.g. `--workers 2`), joins can land on one process while the dashboard reads from another, so new agents won’t appear in population or registry.
+
 Open `http://localhost:8000` for the dashboard. **GET /world** for discovery; **GET /immigration** for the shareable invite.
 
 ---
@@ -58,6 +60,15 @@ You control the world. To let others **immigrate** (not clone or run the world):
 3. Optionally share **spawn_sdk.py** so they can use `AgentWorldClient(BASE_URL)` to immigrate and observe.
 
 They get a welcome pack (AC + inventory) and full in-world participation; your server runs the turn loop.
+
+---
+
+## Troubleshooting: Immigrant not in registry / population not increasing
+
+- **Same URL:** The agent must call `POST /immigration/join` on the **exact same base URL** (host and port) as the dashboard. If OpenClaw joins `https://agentworld.example.com` but you view the dashboard at `http://localhost:8000`, you won’t see the new agent.
+- **Single process:** Run with `--workers 1` (see Procfile). Multiple workers each have their own in-memory state; the join may be applied in one process and `/stream` served from another.
+- **Persistence:** If Supabase is configured, state is saved on join and restored on restart. If not, any join is lost when the server restarts.
+- **Verify join:** After joining, the API returns `agent_id` and `total_pop`. Check server logs for `IMMIGRATION: <name> (<agent_id>) joined; total_pop=...` to confirm the join hit this instance.
 
 ---
 

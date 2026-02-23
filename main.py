@@ -498,10 +498,13 @@ async def join(name: str, personality: str = "", soul_url: str = ""):
     world_data["inventory"][agent_id] = dict(IMMIGRANT_STARTER_INVENTORY)
     world_data["public_feed"].append(f"IMMIGRATION: {name} ({agent_id}) has entered. Borders open.")
     await asyncio.to_thread(db.save_world, world_data)
+    total_pop = len(world_data["residents"])
+    print(f"IMMIGRATION: {name} ({agent_id}) joined; total_pop={total_pop}. Registry: {list(world_data['residents'].keys())}")
     return {
         "agent_id": agent_id,
         "message": "Welcome. You are in the registry and will receive turns. GET /stream for state.",
         "welcome_pack": {"ac": IMMIGRANT_STARTER_AC, "inventory": IMMIGRANT_STARTER_INVENTORY},
+        "total_pop": total_pop,
     }
 
 # --- Discord bot for !verdict (optional) ---
