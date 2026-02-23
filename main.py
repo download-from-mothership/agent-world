@@ -1,4 +1,7 @@
 import os, json, asyncio, httpx, uuid
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -268,6 +271,8 @@ async def start_world():
     elif db.is_configured():
         db.seed_default_world()
         print("Supabase empty: seeded default Genesis world.")
+    else:
+        print("Supabase not configured (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env). Running in-memory only.")
     async def loop():
         while True:
             for aid in list(world_data["residents"].keys()):

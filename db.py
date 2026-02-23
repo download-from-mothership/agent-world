@@ -3,6 +3,7 @@ Supabase persistence for Agent World.
 Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env. If unset, load/save no-op and world runs in-memory only.
 """
 import os
+import traceback
 
 _supabase = None
 
@@ -90,6 +91,7 @@ def load_world():
         }
     except Exception as e:
         print(f"DB load failed: {e}")
+        traceback.print_exc()
         return None
 
 
@@ -147,6 +149,7 @@ def save_world(world_data):
         sb.table("config").upsert({"key": "tribunal_treasury", "value": str(world_data["tribunal_treasury"])}, on_conflict="key").execute()
     except Exception as e:
         print(f"DB save failed: {e}")
+        traceback.print_exc()
 
 
 def seed_default_world():
@@ -167,3 +170,4 @@ def seed_default_world():
         sb.table("config").upsert({"key": "tribunal_treasury", "value": "0"}, on_conflict="key").execute()
     except Exception as e:
         print(f"DB seed failed: {e}")
+        traceback.print_exc()
