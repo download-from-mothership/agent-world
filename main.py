@@ -590,7 +590,8 @@ async def start_world():
                 if winner_id is not None:
                     status, err = await _apply_verdict(d["id"], winner_id, reason=reason)
                     if status == "applied":
-                        world_data["public_feed"].append(f"COURT: Case #{d['id']} settled by evidence review.")
+                        fee = int(d["stakes"] * 0.1)
+                        world_data["public_feed"].append(f"COURT: Case #{d['id']} settled by evidence review. Treasury +{fee} AC (10% grievance fee).")
                     else:
                         d["status"] = "ON_DOCKET"
                         d["docket_reason"] = err or "Defendant has insufficient AC to pay stakes."
