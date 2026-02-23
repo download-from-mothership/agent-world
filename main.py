@@ -2,9 +2,9 @@ import os, json, asyncio, httpx, uuid
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from openai import OpenAI
 
 import db
@@ -100,10 +100,18 @@ AGENT_PROMPTS = {
 
 @app.post("/tribunal/resolve")
 async def resolve_dispute(dispute_id: str, winner_id: str):
-    # (Kept the same resolution logic as before...)
     dispute = next((d for d in world_data["active_disputes"] if d["id"] == dispute_id), None)
-    if not dispute: return {"error": "Not found"}
+    if not dispute:
+        raise HTTPException(status_code=404, detail="Not found")
     plaintiff, defendant, stakes = dispute["plaintiff"], dispute["defendant"], int(dispute["stakes"])
+    # Prevent negative AC: defendant must be able to pay stakes if plaintiff wins
+    if winner_id == plaintiff:
+        defendant_balance = world_data["ledger"].get(defendant, 0)
+        if defendant_balance < stakes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Defendant {defendant} has insufficient AC ({defendant_balance} AC); needs {stakes} AC to pay stakes. Resolution denied.",
+            )
     treasury_cut = int(stakes * 0.1)  # 10% to treasury (integer)
     if winner_id == plaintiff:
         world_data["ledger"][defendant] = world_data["ledger"].get(defendant, 0) - stakes
@@ -199,17 +207,24 @@ async def run_agent_cycle(agent_id):
             else:
                 world_data["confessionals"].append(f"{agent_id} trade failed (need {amount} {asset}, have {have}; buyer needs {price_ac} AC).")
 
-        # 3. PROCESS DISPUTE
+        # 3. PROCESS DISPUTE (plaintiff must have enough AC to stake)
         elif action == "DISPUTE" and target in living_ids:
-            d_id = str(uuid.uuid4())[:4].upper()
-            world_data["active_disputes"].append({
-                "id": d_id, "plaintiff": agent_id, "defendant": target,
-                "stakes": 100, "claim_evidence": res.get('substantiated_evidence', 'No proof.'),
-                "rebuttal": "Waiting...", "status": "AWAITING_REBUTTAL", "cycles_remaining": 3
-            })
-            world_data["ledger"][agent_id] -= 100
-            world_data["public_feed"].append(f"COURT: {agent_id} sued {target} (Case #{d_id})")
-            await notify_discord_docket(world_data["active_disputes"][-1])
+            dispute_stakes = 100
+            plaintiff_ac = world_data["ledger"].get(agent_id, 0)
+            if plaintiff_ac < dispute_stakes:
+                world_data["confessionals"].append(
+                    f"{agent_id} dispute denied: insufficient AC (have {plaintiff_ac} AC, need {dispute_stakes} AC to file)."
+                )
+            else:
+                d_id = str(uuid.uuid4())[:4].upper()
+                world_data["active_disputes"].append({
+                    "id": d_id, "plaintiff": agent_id, "defendant": target,
+                    "stakes": dispute_stakes, "claim_evidence": res.get('substantiated_evidence', 'No proof.'),
+                    "rebuttal": "Waiting...", "status": "AWAITING_REBUTTAL", "cycles_remaining": 3
+                })
+                world_data["ledger"][agent_id] -= dispute_stakes
+                world_data["public_feed"].append(f"COURT: {agent_id} sued {target} (Case #{d_id})")
+                await notify_discord_docket(world_data["active_disputes"][-1])
 
         # 4. PROCESS REBUTTAL
         elif action == "REBUTTAL" and pending:
