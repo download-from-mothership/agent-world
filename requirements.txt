@@ -5,3 +5,4 @@ openai
 httpx
 python-multipart
 supabase
+discord.py

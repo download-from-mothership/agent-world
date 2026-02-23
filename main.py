@@ -14,7 +14,12 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 
+def _trunc(s: str, max_len: int = 900) -> str:
+    s = (s or "").strip()
+    return s[:max_len] + ("…" if len(s) > max_len else "")
 
 async def notify_discord(content: str):
     """Post to High Court Discord channel when webhook is configured."""
@@ -22,7 +27,46 @@ async def notify_discord(content: str):
         return
     try:
         async with httpx.AsyncClient() as client_http:
-            await client_http.post(DISCORD_WEBHOOK, json={"content": content}, timeout=5.0)
+            await client_http.post(DISCORD_WEBHOOK, json={"content": content[:2000]}, timeout=5.0)
+    except Exception as e:
+        print(f"Discord notify failed: {e}")
+
+async def notify_discord_docket(dispute: dict):
+    """Post new case to Discord with full claim evidence for arbiters."""
+    if not DISCORD_WEBHOOK or not DISCORD_WEBHOOK.strip():
+        return
+    claim = _trunc(dispute.get("claim_evidence") or "No proof.")
+    body = (
+        f"**HIGH COURT DOCKET**\n📋 **Case #{dispute['id']}**\n"
+        f"**Plaintiff:** {dispute['plaintiff']}  vs  **Defendant:** {dispute['defendant']}\n"
+        f"**Stakes:** {dispute['stakes'] * 2} AC\n\n"
+        f"**Claim (evidence):**\n```\n{claim}\n```"
+    )
+    try:
+        async with httpx.AsyncClient() as client_http:
+            await client_http.post(DISCORD_WEBHOOK, json={"content": body[:2000]}, timeout=5.0)
+    except Exception as e:
+        print(f"Discord notify failed: {e}")
+
+async def notify_discord_ready_for_verdict(dispute: dict):
+    """Post case ready for verdict with full claim + rebuttal so arbiters can decide in Discord."""
+    if not DISCORD_WEBHOOK or not DISCORD_WEBHOOK.strip():
+        return
+    claim = _trunc(dispute.get("claim_evidence") or "No proof.")
+    rebuttal = _trunc(dispute.get("rebuttal") or "No rebuttal.")
+    body = (
+        f"**HIGH COURT — READY FOR VERDICT**\n📋 **Case #{dispute['id']}**\n"
+        f"**Plaintiff:** {dispute['plaintiff']}  vs  **Defendant:** {dispute['defendant']}\n"
+        f"**Stakes:** {dispute['stakes'] * 2} AC\n\n"
+        f"**Claim:**\n```\n{claim}\n```\n\n"
+        f"**Rebuttal:**\n```\n{rebuttal}\n```\n\n"
+        f"**Arbiter:** Reply in this channel with:\n"
+        f"`!verdict {dispute['id']} {dispute['plaintiff']}`  → Plaintiff wins\n"
+        f"`!verdict {dispute['id']} {dispute['defendant']}`  → Defendant wins"
+    )
+    try:
+        async with httpx.AsyncClient() as client_http:
+            await client_http.post(DISCORD_WEBHOOK, json={"content": body[:2000]}, timeout=5.0)
     except Exception as e:
         print(f"Discord notify failed: {e}")
 
@@ -143,7 +187,6 @@ async def run_agent_cycle(agent_id):
         # 3. PROCESS DISPUTE
         elif res['action'] == "DISPUTE" and target in living_ids:
             d_id = str(uuid.uuid4())[:4].upper()
-            evidence = res.get('substantiated_evidence', 'No proof.')[:200]
             world_data["active_disputes"].append({
                 "id": d_id, "plaintiff": agent_id, "defendant": target,
                 "stakes": 100, "claim_evidence": res.get('substantiated_evidence', 'No proof.'),
@@ -151,21 +194,14 @@ async def run_agent_cycle(agent_id):
             })
             world_data["ledger"][agent_id] -= 100
             world_data["public_feed"].append(f"COURT: {agent_id} sued {target} (Case #{d_id})")
-            await notify_discord(
-                f"**HIGH COURT DOCKET**\n📋 Case #{d_id}\n"
-                f"Plaintiff: {agent_id} vs Defendant: {target}\n"
-                f"Stakes: 200 AC\nEvidence: {evidence}"
-            )
+            await notify_discord_docket(world_data["active_disputes"][-1])
 
         # 4. PROCESS REBUTTAL
         elif res['action'] == "REBUTTAL" and pending:
             pending["rebuttal"] = res.get('substantiated_evidence', 'No rebuttal.')
             pending["status"] = "READY_FOR_VERDICT"
             world_data["public_feed"].append(f"COURT: {agent_id} responded to Case #{pending['id']}")
-            await notify_discord(
-                f"**HIGH COURT — READY FOR VERDICT**\n"
-                f"Case #{pending['id']} ({pending['plaintiff']} vs {pending['defendant']}). Arbiters may resolve."
-            )
+            await notify_discord_ready_for_verdict(pending)
 
         # Save private thought
         world_data["confessionals"].append(f"{agent_id}: {res.get('private_thought', 'thinking...')}")
@@ -255,8 +291,51 @@ async def join(name: str, personality: str = "", soul_url: str = ""):
         "welcome_pack": {"ac": IMMIGRANT_STARTER_AC, "inventory": IMMIGRANT_STARTER_INVENTORY},
     }
 
+# --- Discord bot for !verdict (optional) ---
+def _run_discord_bot():
+    """Run Discord bot that listens for !verdict CASE_ID WINNER_ID and calls backend."""
+    import discord
+    intents = discord.Intents.default()
+    intents.message_content = True
+
+    class VerdictBot(discord.Client):
+        async def on_ready(self):
+            print(f"Discord verdict bot connected as {self.user}.")
+
+        async def on_message(self, message):
+            if message.author.bot:
+                return
+            raw = (message.content or "").strip()
+            if not raw.lower().startswith("!verdict "):
+                return
+            parts = raw[len("!verdict "):].strip().split()
+            if len(parts) < 2:
+                await message.reply("Use: `!verdict CASE_ID WINNER_ID` (e.g. `!verdict A1B2 A-001`)")
+                return
+            dispute_id, winner_id = parts[0], parts[1]
+            try:
+                async with httpx.AsyncClient() as client_http:
+                    r = await client_http.post(
+                        f"{BACKEND_URL}/tribunal/resolve",
+                        params={"dispute_id": dispute_id, "winner_id": winner_id},
+                        timeout=10.0,
+                    )
+                if r.status_code == 200:
+                    await message.reply(f"✅ **Verdict recorded:** {winner_id} wins Case #{dispute_id}.")
+                else:
+                    err = (r.json() or {}).get("error") or r.text or f"HTTP {r.status_code}"
+                    await message.reply(f"❌ {err}")
+            except Exception as e:
+                await message.reply(f"❌ Failed to reach court: {e}")
+
+    client = VerdictBot(intents=intents)
+    client.run(DISCORD_BOT_TOKEN)
+
 @app.on_event("startup")
 async def start_world():
+    # Optional: start Discord bot for !verdict in-channel
+    if DISCORD_BOT_TOKEN:
+        asyncio.create_task(asyncio.to_thread(_run_discord_bot))
     # Load from Supabase if configured and DB has data; otherwise keep defaults and seed DB
     loaded = db.load_world()
     if loaded:
