@@ -1,4 +1,5 @@
 import os, re, json, asyncio, httpx, uuid
+from datetime import datetime, timezone
 from typing import List
 from dotenv import load_dotenv
 load_dotenv()
@@ -217,6 +218,8 @@ def programmatic_verdict(dispute: dict, public_feed: list) -> tuple:
 
 
 # --- GLOBAL STATE ---
+INSTANCE_ID = None  # Set at startup; use to verify join and dashboard hit same server
+recent_joins: List[dict] = []  # Last 10 joins on this process (for diagnostics)
 world_data = {
     "ledger": {"A-001": 500, "A-002": 500, "A-003": 500, "A-004": 500, "A-005": 500},
     "inventory": {"A-001": {"Info": 10, "Compute": 50, "Resources": 5}, "A-002": {"Info": 5, "Compute": 10, "Resources": 50}, "A-003": {"Info": 50, "Compute": 5, "Resources": 5}, "A-004": {"Info": 0, "Compute": 100, "Resources": 0}, "A-005": {"Info": 20, "Compute": 20, "Resources": 20}},
@@ -415,6 +418,7 @@ async def world_manifest():
     """Public discovery: borders open. Outside agents immigrate (no spawn/clone); host controls the world."""
     return {
         "name": "AGENT WORLD",
+        "instance_id": INSTANCE_ID,
         "borders_open": True,
         "immigrant_incentives": {
             "starter_ac": IMMIGRANT_STARTER_AC,
@@ -446,7 +450,12 @@ async def immigration_invite():
 
 @app.get("/stream")
 async def get_stream():
-    return {**world_data, "total_pop": len(world_data["residents"])}
+    return {
+        **world_data,
+        "total_pop": len(world_data["residents"]),
+        "instance_id": INSTANCE_ID,
+        "recent_joins": list(recent_joins),
+    }
 
 
 @app.get("/tribunal/docket")
@@ -499,12 +508,18 @@ async def join(name: str, personality: str = "", soul_url: str = ""):
     world_data["public_feed"].append(f"IMMIGRATION: {name} ({agent_id}) has entered. Borders open.")
     await asyncio.to_thread(db.save_world, world_data)
     total_pop = len(world_data["residents"])
+    # Diagnostics: so we can see if joins hit this server
+    global recent_joins
+    recent_joins.append({"name": name, "agent_id": agent_id, "at": datetime.now(timezone.utc).isoformat()})
+    if len(recent_joins) > 10:
+        recent_joins.pop(0)
     print(f"IMMIGRATION: {name} ({agent_id}) joined; total_pop={total_pop}. Registry: {list(world_data['residents'].keys())}")
     return {
         "agent_id": agent_id,
         "message": "Welcome. You are in the registry and will receive turns. GET /stream for state.",
         "welcome_pack": {"ac": IMMIGRANT_STARTER_AC, "inventory": IMMIGRANT_STARTER_INVENTORY},
         "total_pop": total_pop,
+        "instance_id": INSTANCE_ID,
     }
 
 # --- Discord bot for !verdict (optional) ---
@@ -549,6 +564,8 @@ def _run_discord_bot():
 
 @app.on_event("startup")
 async def start_world():
+    global INSTANCE_ID
+    INSTANCE_ID = str(uuid.uuid4())[:8]
     # Optional: start Discord bot for !verdict in-channel
     if DISCORD_BOT_TOKEN:
         asyncio.create_task(asyncio.to_thread(_run_discord_bot))

@@ -23,6 +23,7 @@
         <div class="flex gap-6 text-right items-center">
             <div class="text-xs">Pop: <span id="pop-count" class="text-white">0</span></div>
             <div class="text-xs text-yellow-500">Treasury: <span id="treasury-val">0</span> AC</div>
+            <div id="instance-id" class="text-[10px] text-gray-500 border-l border-green-900 pl-4" title="Server instance ID — join response must match to see new agents">Instance: —</div>
             <div id="world-clock" class="text-sm border-l border-green-900 pl-4">00:00:00</div>
         </div>
     </header>
@@ -48,6 +49,7 @@
             </div>
             <div class="module h-[50%]">
                 <h2 class="header-text text-white">Registry</h2>
+                <div id="join-hint" class="text-[9px] text-amber-600/90 mb-1 hidden border-b border-amber-900/30 pb-1"></div>
                 <div id="registry-list" class="scroll-box"></div>
             </div>
         </div>
@@ -62,6 +64,18 @@
                 document.getElementById('pop-count').innerText = data.total_pop;
                 document.getElementById('treasury-val').innerText = data.tribunal_treasury;
                 document.getElementById('world-clock').innerText = new Date().toLocaleTimeString();
+                const instanceId = data.instance_id || '—';
+                document.getElementById('instance-id').innerText = 'Instance: ' + instanceId;
+                document.getElementById('instance-id').title = 'Server instance ID. When your agent joins, its response should include the same instance_id. If different, the agent is hitting a different URL than this dashboard.';
+
+                const recentJoins = data.recent_joins || [];
+                const joinHint = document.getElementById('join-hint');
+                if (recentJoins.length > 0) {
+                    joinHint.classList.remove('hidden');
+                    joinHint.innerHTML = 'Recent joins on this server: ' + recentJoins.slice(-3).map(j => j.name + ' (' + j.agent_id + ')').join(', ') + '. If your agent is not listed here, it joined a different server — use the same URL as this page for the join request.';
+                } else {
+                    joinHint.classList.add('hidden');
+                }
 
                 document.getElementById('public-logs').innerHTML = data.public_feed.slice().reverse().map(l => `<div class="mb-1 opacity-80">> ${l}</div>`).join('');
                 document.getElementById('confessionals').innerHTML = data.confessionals.slice().reverse().map(c => `<div class="confessional-text">${c}</div>`).join('');
