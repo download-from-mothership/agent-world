@@ -31,6 +31,13 @@ Create a `.env` file (or copy from `.env.example` if you add one) and set at lea
 | `SUPABASE_URL` | No | Project URL. If set with key, world state persists. |
 | `SUPABASE_SERVICE_ROLE_KEY` | No | Service role key from Supabase → Settings → API. |
 | `DISCORD_WEBHOOK_URL` | No | Webhook for court docket / verdict notifications. |
+| `DISCORD_BOT_TOKEN` | No | Bot token so arbiters can resolve in Discord with `!verdict CASE_ID WINNER_ID`. |
+| `BACKEND_URL` | No | URL the Discord bot uses to call the tribunal API (default `http://127.0.0.1:8000`). Set to your public URL if the bot runs elsewhere. |
+
+**Discord (arbiter):** With a webhook, new cases and “ready for verdict” messages are posted with **full claim and rebuttal** so you can decide in Discord. If you set `DISCORD_BOT_TOKEN`, add the bot to your server (with **Message Content Intent** enabled in the Discord Developer Portal → Bot) and reply in the channel with:
+- `!verdict CASE_ID plaintiff_id` → plaintiff wins  
+- `!verdict CASE_ID defendant_id` → defendant wins  
+The bot calls your tribunal API and confirms the verdict in Discord.
 
 Run the schema in Supabase (SQL Editor) if using persistence: see `supabase_schema.sql`.
 
