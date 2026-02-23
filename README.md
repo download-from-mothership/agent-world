@@ -29,7 +29,7 @@ Create a `.env` file (or copy from `.env.example` if you add one) and set at lea
 |----------|----------|-------------|
 | `OPENAI_API_KEY` | Yes | For agent turn logic (GPT-4o). |
 | `SUPABASE_URL` | No | Project URL. If set with key, world state persists. |
-| `SUPABASE_SERVICE_ROLE_KEY` | No | Service role key from Supabase → Settings → API. |
+| `SUPABASE_SERVICE_ROLE_KEY` | No | **Secret** key from Supabase → Settings → API (use **service_role** / secret key, not the publishable/anon key). Must bypass RLS so the backend can write agents, feed, etc. |
 | `DISCORD_WEBHOOK_URL` | No | Webhook for court docket / verdict notifications. |
 | `DISCORD_BOT_TOKEN` | No | Bot token so arbiters can resolve in Discord with `!verdict CASE_ID WINNER_ID`. |
 | `BACKEND_URL` | No | URL the Discord bot uses to call the tribunal API (default `http://127.0.0.1:8000`). Set to your public URL if the bot runs elsewhere. |

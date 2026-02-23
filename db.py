@@ -15,6 +15,8 @@ def _client():
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
     if not url or not key:
         return None
+    if key.startswith("sb_publishable_"):
+        print("WARNING: SUPABASE_SERVICE_ROLE_KEY looks like a publishable (anon) key. Use the SECRET key from Supabase → Settings → API so the backend can write to the database.")
     from supabase import create_client
     _supabase = create_client(url, key)
     return _supabase
@@ -34,6 +36,7 @@ def load_world():
         # Agents -> residents, ledger, inventory
         r = sb.table("agents").select("*").execute()
         if not r.data or len(r.data) == 0:
+            print("DB load: agents table empty or missing, returning None.")
             return None
         residents = {}
         ledger = {}
@@ -100,6 +103,7 @@ def save_world(world_data):
     """Persist world_data to Supabase. No-op if Supabase not configured."""
     sb = _client()
     if not sb:
+        print("DB save skipped: Supabase not configured (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY).")
         return
     try:
         # Upsert agents (residents + ledger + inventory)
@@ -112,15 +116,21 @@ def save_world(world_data):
                 "origin": res["origin"],
                 "personality": res.get("personality", ""),
                 "balance": world_data["ledger"].get(aid, 0),
-                "info": inv.get("Info", 0),
-                "compute": inv.get("Compute", 0),
-                "resources": inv.get("Resources", 0),
+                "info": int(inv.get("Info", 0)),
+                "compute": int(inv.get("Compute", 0)),
+                "resources": int(inv.get("Resources", 0)),
             })
         if rows:
             sb.table("agents").upsert(rows, on_conflict="id").execute()
+            print(f"DB save: agents upserted ({len(rows)} rows).")
+        else:
+            print("DB save: no agents to upsert (residents empty).")
 
-        # Disputes: replace all
-        sb.table("disputes").delete().neq("id", "").execute()  # delete all
+        # Disputes: replace all (delete then insert)
+        try:
+            sb.table("disputes").delete().neq("id", "").execute()
+        except Exception as del_e:
+            print(f"DB save: disputes delete: {del_e}")
         if world_data["active_disputes"]:
             sb.table("disputes").insert([
                 {
@@ -136,18 +146,27 @@ def save_world(world_data):
                 }
                 for d in world_data["active_disputes"]
             ]).execute()
+            print(f"DB save: disputes inserted ({len(world_data['active_disputes'])}).")
 
-        # Feed: replace with current list (last 25)
-        sb.table("feed").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+        # Feed: append-only would require schema change; replace list by delete + insert
+        try:
+            sb.table("feed").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+        except Exception as del_e:
+            print(f"DB save: feed delete (optional): {del_e}")
         if world_data["public_feed"]:
             sb.table("feed").insert([{"message": m} for m in world_data["public_feed"]]).execute()
+            print(f"DB save: feed inserted ({len(world_data['public_feed'])}).")
 
-        # Confessionals: replace with current list (last 20)
-        sb.table("confessionals").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+        # Confessionals
+        try:
+            sb.table("confessionals").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+        except Exception as del_e:
+            print(f"DB save: confessionals delete (optional): {del_e}")
         if world_data["confessionals"]:
             sb.table("confessionals").insert([{"message": m} for m in world_data["confessionals"]]).execute()
+            print(f"DB save: confessionals inserted ({len(world_data['confessionals'])}).")
 
-        # Config (store as integer string so load never fails on "10.0")
+        # Config
         treasury = world_data.get("tribunal_treasury", 0)
         sb.table("config").upsert({"key": "tribunal_treasury", "value": str(int(treasury))}, on_conflict="key").execute()
     except Exception as e:
@@ -159,6 +178,7 @@ def seed_default_world():
     """Insert default Genesis world into DB (agents + one feed line + config)."""
     sb = _client()
     if not sb:
+        print("DB seed skipped: Supabase not configured.")
         return
     try:
         default_agents = [
@@ -169,8 +189,11 @@ def seed_default_world():
             {"id": "A-005", "name": "Curator", "origin": "Genesis", "personality": "", "balance": 500, "info": 20, "compute": 20, "resources": 20},
         ]
         sb.table("agents").upsert(default_agents, on_conflict="id").execute()
+        print(f"DB seed: agents upserted ({len(default_agents)} rows).")
         sb.table("feed").insert({"message": "System Update: Heartbeat logic restored. Broadcasting enabled."}).execute()
+        print("DB seed: feed inserted.")
         sb.table("config").upsert({"key": "tribunal_treasury", "value": "0"}, on_conflict="key").execute()
+        print("DB seed: config updated.")
     except Exception as e:
         print(f"DB seed failed: {e}")
         traceback.print_exc()

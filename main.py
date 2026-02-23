@@ -565,6 +565,10 @@ async def start_world():
         print("Supabase empty: seeded default Genesis world.")
     else:
         print("Supabase not configured (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env). Running in-memory only.")
+    # Persist immediately so DB is written (and any save error is visible at startup)
+    if db.is_configured():
+        await asyncio.to_thread(db.save_world, world_data)
+        print("Startup: world state saved to Supabase.")
     async def loop():
         while True:
             for aid in list(world_data["residents"].keys()):
