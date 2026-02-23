@@ -76,9 +76,9 @@ def load_world():
         r = sb.table("confessionals").select("message").order("created_at", desc=True).limit(20).execute()
         confessionals = [x["message"] for x in reversed(r.data or [])]
 
-        # Treasury
+        # Treasury (value may be stored as "10" or "10.0")
         r = sb.table("config").select("value").eq("key", "tribunal_treasury").execute()
-        tribunal_treasury = int(r.data[0]["value"]) if r.data else 0
+        tribunal_treasury = int(float(r.data[0]["value"])) if r.data else 0
 
         return {
             "ledger": ledger,
@@ -145,8 +145,9 @@ def save_world(world_data):
         if world_data["confessionals"]:
             sb.table("confessionals").insert([{"message": m} for m in world_data["confessionals"]]).execute()
 
-        # Config
-        sb.table("config").upsert({"key": "tribunal_treasury", "value": str(world_data["tribunal_treasury"])}, on_conflict="key").execute()
+        # Config (store as integer string so load never fails on "10.0")
+        treasury = world_data.get("tribunal_treasury", 0)
+        sb.table("config").upsert({"key": "tribunal_treasury", "value": str(int(treasury))}, on_conflict="key").execute()
     except Exception as e:
         print(f"DB save failed: {e}")
         traceback.print_exc()

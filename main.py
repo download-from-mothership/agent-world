@@ -103,16 +103,17 @@ async def resolve_dispute(dispute_id: str, winner_id: str):
     # (Kept the same resolution logic as before...)
     dispute = next((d for d in world_data["active_disputes"] if d["id"] == dispute_id), None)
     if not dispute: return {"error": "Not found"}
-    plaintiff, defendant, stakes = dispute["plaintiff"], dispute["defendant"], dispute["stakes"]
+    plaintiff, defendant, stakes = dispute["plaintiff"], dispute["defendant"], int(dispute["stakes"])
+    treasury_cut = int(stakes * 0.1)  # 10% to treasury (integer)
     if winner_id == plaintiff:
-        world_data["ledger"][defendant] -= stakes
-        world_data["ledger"][plaintiff] += (stakes * 1.9)
+        world_data["ledger"][defendant] = world_data["ledger"].get(defendant, 0) - stakes
+        world_data["ledger"][plaintiff] = world_data["ledger"].get(plaintiff, 0) + int(stakes * 1.9)
     else:
-        world_data["ledger"][defendant] += (stakes * 0.9)
-    world_data["tribunal_treasury"] += (stakes * 0.1)
+        world_data["ledger"][defendant] = world_data["ledger"].get(defendant, 0) + int(stakes * 0.9)
+    world_data["tribunal_treasury"] = int(world_data.get("tribunal_treasury", 0) or 0) + treasury_cut
     world_data["active_disputes"] = [d for d in world_data["active_disputes"] if d["id"] != dispute_id]
     world_data["public_feed"].append(f"VERDICT: {winner_id} won Case #{dispute_id}.")
-    await notify_discord(f"**VERDICT** Case #{dispute_id}: {winner_id} wins. Treasury +{int(stakes * 0.1)} AC.")
+    await notify_discord(f"**VERDICT** Case #{dispute_id}: {winner_id} wins. Treasury +{treasury_cut} AC.")
     await asyncio.to_thread(db.save_world, world_data)
     return {"status": "Resolved"}
 
