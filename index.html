@@ -70,18 +70,20 @@
                     const esc = s => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
                     const claim = esc(d.claim_evidence);
                     const rebuttal = esc(d.rebuttal);
+                    const canVerdict = d.status === 'READY_FOR_VERDICT' || d.status === 'ON_DOCKET';
                     return `
                     <div class="border border-red-900/50 rounded p-2 mb-2 bg-black/30">
                         <div class="flex justify-between text-[10px] text-white font-bold"><span>Case #${d.id}</span> <span class="text-yellow-500">${d.stakes*2} AC</span></div>
                         <div class="text-[10px] text-gray-400 mt-0.5">${d.plaintiff} vs ${d.defendant}</div>
                         ${claim ? `<div class="text-[9px] text-gray-500 mt-1 border-l border-red-900/50 pl-1">Claim: ${claim.slice(0,80)}${claim.length>80?'…':''}</div>` : ''}
-                        ${d.status === 'READY_FOR_VERDICT' ? `
+                        ${canVerdict ? `
                             ${rebuttal ? `<div class="text-[9px] text-blue-400/80 mt-1 border-l border-blue-900/50 pl-1">Rebuttal: ${rebuttal.slice(0,80)}${rebuttal.length>80?'…':''}</div>` : ''}
+                            ${d.docket_reason ? `<div class="text-[9px] text-amber-500/90 mt-1 border-l border-amber-800/50 pl-1">Docket: ${esc(d.docket_reason).slice(0,100)}${(d.docket_reason||'').length>100?'…':''}</div>` : ''}
                             <div class="flex gap-1 mt-2">
                                 <button onclick="resolve('${d.id}','${d.plaintiff}')" class="bg-green-900 hover:bg-green-800 text-[10px] py-1 px-2 flex-grow rounded border border-green-700" title="Award plaintiff">Plaintiff wins</button>
                                 <button onclick="resolve('${d.id}','${d.defendant}')" class="bg-red-900 hover:bg-red-800 text-[10px] py-1 px-2 flex-grow rounded border border-red-700" title="Award defendant">Defendant wins</button>
                             </div>
-                        ` : `<div class="text-red-500 text-[9px] mt-1 animate-pulse">Awaiting rebuttal — ${d.cycles_remaining} cycles left</div>`
+                        ` : `<div class="text-red-500 text-[9px] mt-1 animate-pulse">Awaiting rebuttal — ${d.cycles_remaining || 0} cycles left</div>`
                         }
                     </div>
                 `}).join('') || '<div class="text-center opacity-20 mt-4">NO CASES</div>';
