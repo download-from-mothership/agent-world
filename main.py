@@ -120,20 +120,33 @@ async def resolve_dispute(dispute_id: str, winner_id: str):
 async def run_agent_cycle(agent_id):
     try:
         living_ids = list(world_data["residents"].keys())
-        # Check for summons
+        # Check for summons (defendant must rebut)
         pending = next((d for d in world_data["active_disputes"] if d["defendant"] == agent_id and d["status"] == "AWAITING_REBUTTAL"), None)
-        
+
         role = AGENT_PROMPTS.get(agent_id) or world_data["residents"][agent_id].get("personality", "Immigrant")
+        summons_block = ""
+        if pending:
+            claim_preview = (pending.get("claim_evidence") or "No claim.")[:500]
+            cycles_left = int(pending.get("cycles_remaining", 0))
+            summons_block = f"""
+        *** YOU ARE THE DEFENDANT IN AN ACTIVE CASE — YOU MUST REBUT THIS TURN ***
+        Case #{pending['id']}: Plaintiff {pending['plaintiff']} has sued you. Stakes: {pending['stakes']*2} AC.
+        Their claim (evidence): {claim_preview}
+        You have {cycles_left} cycle(s) left to submit a REBUTTAL. If you do not, the case goes to verdict without your response.
+        You MUST respond with: "action": "REBUTTAL", "substantiated_evidence": "Your defense and counter-evidence."
+        ***
+
+        """
         prompt = f"""
         You are {agent_id}. Role: {role}.
         REGISTRY: {living_ids}. 
         Your wallet: {world_data['ledger'][agent_id]} AC. Your inventory: {world_data['inventory'][agent_id]} (Info, Compute, Resources).
-        
+        {summons_block}
         Action Options:
         1. CHAT: Send a message. Use 'target': 'GLOBAL' to talk to everyone.
         2. TRADE_ASSET: Sell inventory to another agent. Set target=buyer_id, asset="Info"|"Compute"|"Resources", amount=number, price_ac=AC you want.
         3. DISPUTE: Sue someone. 
-        4. REBUTTAL: If you are being sued, you MUST do this.
+        4. REBUTTAL: If you are the defendant in a case (see summons above), you MUST do this and set substantiated_evidence to your defense.
 
         Respond in VALID JSON (use only one action per turn):
         {{
@@ -152,12 +165,13 @@ async def run_agent_cycle(agent_id):
             model="gpt-4o", messages=[{"role": "system", "content": prompt}], response_format={"type": "json_object"}
         )
         res = json.loads(response.choices[0].message.content)
+        action = (res.get("action") or "").strip().upper()
 
         # 1. PROCESS CHAT
         target = res.get('target', 'GLOBAL')
         content = res.get('content', '...')
         
-        if res['action'] == "CHAT":
+        if action == "CHAT":
             if target == "GLOBAL":
                 world_data["public_feed"].append(f"{agent_id} [GLOBAL]: \"{content}\"")
             elif target in living_ids:
@@ -167,7 +181,7 @@ async def run_agent_cycle(agent_id):
                 world_data["public_feed"].append(f"{agent_id}: \"{content}\"")
 
         # 2. PROCESS TRADE_ASSET (seller=agent_id, buyer=target; move inventory + AC)
-        elif res['action'] == "TRADE_ASSET" and target in living_ids and target != agent_id:
+        elif action == "TRADE_ASSET" and target in living_ids and target != agent_id:
             asset = res.get("asset") or "Info"
             if asset not in ("Info", "Compute", "Resources"):
                 asset = "Info"
@@ -186,7 +200,7 @@ async def run_agent_cycle(agent_id):
                 world_data["confessionals"].append(f"{agent_id} trade failed (need {amount} {asset}, have {have}; buyer needs {price_ac} AC).")
 
         # 3. PROCESS DISPUTE
-        elif res['action'] == "DISPUTE" and target in living_ids:
+        elif action == "DISPUTE" and target in living_ids:
             d_id = str(uuid.uuid4())[:4].upper()
             world_data["active_disputes"].append({
                 "id": d_id, "plaintiff": agent_id, "defendant": target,
@@ -198,9 +212,10 @@ async def run_agent_cycle(agent_id):
             await notify_discord_docket(world_data["active_disputes"][-1])
 
         # 4. PROCESS REBUTTAL
-        elif res['action'] == "REBUTTAL" and pending:
+        elif action == "REBUTTAL" and pending:
             pending["rebuttal"] = res.get('substantiated_evidence', 'No rebuttal.')
             pending["status"] = "READY_FOR_VERDICT"
+            pending["cycles_remaining"] = 0  # no longer waiting
             world_data["public_feed"].append(f"COURT: {agent_id} responded to Case #{pending['id']}")
             await notify_discord_ready_for_verdict(pending)
 
@@ -357,6 +372,15 @@ async def start_world():
         while True:
             for aid in list(world_data["residents"].keys()):
                 await run_agent_cycle(aid)
+            # After each full round: decrement rebuttal countdown for every case still awaiting rebuttal
+            for d in world_data["active_disputes"]:
+                if d.get("status") == "AWAITING_REBUTTAL":
+                    d["cycles_remaining"] = int(d.get("cycles_remaining", 0)) - 1
+                    if d["cycles_remaining"] <= 0:
+                        d["status"] = "READY_FOR_VERDICT"
+                        d["rebuttal"] = d.get("rebuttal") or "No rebuttal submitted (timeout)."
+                        world_data["public_feed"].append(f"COURT: Case #{d['id']} — defendant did not rebut in time. Ready for verdict.")
+                        await notify_discord_ready_for_verdict(d)
             await asyncio.to_thread(db.save_world, world_data)
             await asyncio.sleep(5)
     asyncio.create_task(loop())
