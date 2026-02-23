@@ -1,4 +1,5 @@
-import os, json, asyncio, httpx, uuid
+import os, re, json, asyncio, httpx, uuid
+from typing import List
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -71,6 +72,150 @@ async def notify_discord_ready_for_verdict(dispute: dict):
         print(f"Discord notify failed: {e}")
 
 
+async def notify_discord_docket_review(dispute: dict, docket_reason: str):
+    """Post case to Discord docket when it cannot be settled by evidence or evidence appears fraudulent."""
+    if not DISCORD_WEBHOOK or not DISCORD_WEBHOOK.strip():
+        return
+    claim = _trunc(dispute.get("claim_evidence") or "No proof.")
+    rebuttal = _trunc(dispute.get("rebuttal") or "No rebuttal.")
+    body = (
+        f"**📋 DOCKET — HUMAN VERDICT REQUIRED**\n"
+        f"Case #{dispute['id']} | **Plaintiff:** {dispute['plaintiff']}  vs  **Defendant:** {dispute['defendant']}\n"
+        f"**Stakes:** {dispute['stakes'] * 2} AC\n\n"
+        f"**Why on docket:** {docket_reason}\n\n"
+        f"**Claim:**\n```\n{claim}\n```\n\n"
+        f"**Rebuttal:**\n```\n{rebuttal}\n```\n\n"
+        f"**To settle:** `!verdict {dispute['id']} {dispute['plaintiff']}` or `!verdict {dispute['id']} {dispute['defendant']}`"
+    )
+    try:
+        async with httpx.AsyncClient() as client_http:
+            await client_http.post(DISCORD_WEBHOOK, json={"content": body[:2000]}, timeout=5.0)
+    except Exception as e:
+        print(f"Discord docket notify failed: {e}")
+
+
+# --- EVIDENCE REVIEW (programmatic verdict from verifiable records only) ---
+# Trade lines in public_feed are the only machine-verifiable proof. Format: "TRADE: {seller} sold {amount} {asset} to {buyer} for {price_ac} AC."
+_TRADE_PATTERN = re.compile(
+    r"TRADE:\s*(\S+)\s+sold\s+(\d+)\s+(Info|Compute|Resources)\s+to\s+(\S+)\s+for\s+(\d+)\s+AC\.?"
+)
+
+
+def build_trade_audit(public_feed: list) -> list:
+    """Parse public_feed for TRADE lines. Returns list of dicts: seller, buyer, asset, amount, price_ac (all verifiable)."""
+    audit = []
+    for line in (public_feed or []):
+        m = _TRADE_PATTERN.search(line)
+        if m:
+            seller, amount, asset, buyer, price_ac = m.groups()
+            audit.append({
+                "seller": seller.strip(),
+                "buyer": buyer.strip(),
+                "asset": asset,
+                "amount": int(amount),
+                "price_ac": int(price_ac),
+            })
+    return audit
+
+
+def extract_claim_trades(claim_evidence: str, plaintiff_id: str, defendant_id: str) -> list:
+    """
+    Use LLM to extract structured trade claims from freeform claim text.
+    Returns list of dicts: type (plaintiff_sold_to_defendant | defendant_sold_to_plaintiff), asset, amount, price_ac.
+    Only these can be verified against the trade audit.
+    """
+    if not (claim_evidence or "").strip():
+        return []
+    prompt = f"""You are a court clerk. Extract ONLY verifiable trade claims from the plaintiff's evidence.
+Plaintiff ID: {plaintiff_id}. Defendant ID: {defendant_id}.
+We can only verify two claim types:
+1. Plaintiff sold to defendant: plaintiff_sold_to_defendant — asset (Info|Compute|Resources), amount (number), price_ac (number).
+2. Defendant sold to plaintiff: defendant_sold_to_plaintiff — asset, amount, price_ac.
+Return valid JSON only: {{ "claims": [ {{ "type": "plaintiff_sold_to_defendant" or "defendant_sold_to_plaintiff", "asset": "Info" or "Compute" or "Resources", "amount": <int>, "price_ac": <int> }} ] }}.
+If the text does not describe a specific trade with numbers, or is vague, return {{ "claims": [] }}.
+Normalize asset to exactly one of: Info, Compute, Resources.
+Claim evidence:
+---
+{(claim_evidence or "").strip()[:2000]}
+---"""
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+        )
+        data = json.loads(resp.choices[0].message.content)
+        claims = data.get("claims") or []
+        out = []
+        for c in claims:
+            t = (c.get("type") or "").strip()
+            if t not in ("plaintiff_sold_to_defendant", "defendant_sold_to_plaintiff"):
+                continue
+            asset = (c.get("asset") or "Info").strip()
+            if asset not in ("Info", "Compute", "Resources"):
+                asset = "Info"
+            amount = max(0, int(c.get("amount") or 0))
+            price_ac = max(0, int(c.get("price_ac") or 0))
+            if amount > 0 or price_ac > 0:
+                out.append({"type": t, "asset": asset, "amount": amount, "price_ac": price_ac})
+        return out
+    except Exception as e:
+        print(f"Evidence extract_claim_trades failed: {e}")
+        return []
+
+
+def verify_claims_against_audit(
+    claims: list, audit: list, plaintiff_id: str, defendant_id: str
+) -> List[bool]:
+    """For each claim, return True iff it appears in the audit (exact match)."""
+    results = []
+    for c in claims:
+        t = c.get("type")
+        asset = c.get("asset", "Info")
+        amount = c.get("amount", 0)
+        price_ac = c.get("price_ac", 0)
+        if t == "plaintiff_sold_to_defendant":
+            seller, buyer = plaintiff_id, defendant_id
+        elif t == "defendant_sold_to_plaintiff":
+            seller, buyer = defendant_id, plaintiff_id
+        else:
+            results.append(False)
+            continue
+        found = any(
+            e["seller"] == seller and e["buyer"] == buyer and e["asset"] == asset
+            and e["amount"] == amount and e["price_ac"] == price_ac
+            for e in audit
+        )
+        results.append(found)
+    return results
+
+
+def programmatic_verdict(dispute: dict, public_feed: list) -> tuple:
+    """
+    Settle verdict only from verifiable proof (trade audit).
+    Returns (winner_id | None, reason | None, docket_reason | None).
+    - If plaintiff's stated trade is verified in the audit → (plaintiff, reason, None); can auto-resolve.
+    - If no verifiable proof, or claim appears fraudulent → (None, None, docket_reason); case goes to docket.
+    """
+    plaintiff = dispute.get("plaintiff", "")
+    defendant = dispute.get("defendant", "")
+    claim_evidence = dispute.get("claim_evidence") or ""
+    audit = build_trade_audit(public_feed or [])
+    claims = extract_claim_trades(claim_evidence, plaintiff, defendant)
+    verified = verify_claims_against_audit(claims, audit, plaintiff, defendant)
+    if any(verified):
+        idx = next(i for i, v in enumerate(verified) if v)
+        c = claims[idx]
+        reason = f"Claim verified against trade log: {c.get('type', '')} {c.get('amount', 0)} {c.get('asset', '')} for {c.get('price_ac', 0)} AC."
+        return (plaintiff, reason, None)
+    # No verifiable trade — do not auto-resolve; send to docket
+    if claims:
+        docket_reason = "Claim could not be corroborated against trade records; evidence may be fraudulent or misrepresented."
+    else:
+        docket_reason = "No verifiable trade claim in evidence; cannot settle programmatically."
+    return (None, None, docket_reason)
+
+
 # --- GLOBAL STATE ---
 world_data = {
     "ledger": {"A-001": 500, "A-002": 500, "A-003": 500, "A-004": 500, "A-005": 500},
@@ -112,7 +257,22 @@ async def resolve_dispute(dispute_id: str, winner_id: str):
                 status_code=400,
                 detail=f"Defendant {defendant} has insufficient AC ({defendant_balance} AC); needs {stakes} AC to pay stakes. Resolution denied.",
             )
-    treasury_cut = int(stakes * 0.1)  # 10% to treasury (integer)
+    status, err = await _apply_verdict(dispute_id, winner_id, reason=None)
+    if status == "denied":
+        raise HTTPException(status_code=400, detail=err)
+    return {"status": "Resolved"}
+
+
+async def _apply_verdict(dispute_id: str, winner_id: str, reason: str = None) -> tuple:
+    """Apply verdict: ledger, treasury, feed, notify, save. Returns ('applied', None) or ('denied', detail)."""
+    dispute = next((d for d in world_data["active_disputes"] if d["id"] == dispute_id), None)
+    if not dispute:
+        return ("denied", "Not found")
+    plaintiff, defendant, stakes = dispute["plaintiff"], dispute["defendant"], int(dispute["stakes"])
+    if winner_id == plaintiff:
+        if world_data["ledger"].get(defendant, 0) < stakes:
+            return ("denied", f"Defendant {defendant} has insufficient AC to pay stakes.")
+    treasury_cut = int(stakes * 0.1)
     if winner_id == plaintiff:
         world_data["ledger"][defendant] = world_data["ledger"].get(defendant, 0) - stakes
         world_data["ledger"][plaintiff] = world_data["ledger"].get(plaintiff, 0) + int(stakes * 1.9)
@@ -120,10 +280,13 @@ async def resolve_dispute(dispute_id: str, winner_id: str):
         world_data["ledger"][defendant] = world_data["ledger"].get(defendant, 0) + int(stakes * 0.9)
     world_data["tribunal_treasury"] = int(world_data.get("tribunal_treasury", 0) or 0) + treasury_cut
     world_data["active_disputes"] = [d for d in world_data["active_disputes"] if d["id"] != dispute_id]
-    world_data["public_feed"].append(f"VERDICT: {winner_id} won Case #{dispute_id}.")
+    msg = f"VERDICT: {winner_id} won Case #{dispute_id}."
+    if reason:
+        msg += f" {reason}"
+    world_data["public_feed"].append(msg)
     await notify_discord(f"**VERDICT** Case #{dispute_id}: {winner_id} wins. Treasury +{treasury_cut} AC.")
     await asyncio.to_thread(db.save_world, world_data)
-    return {"status": "Resolved"}
+    return ("applied", None)
 
 async def run_agent_cycle(agent_id):
     try:
@@ -285,6 +448,25 @@ async def immigration_invite():
 async def get_stream():
     return {**world_data, "total_pop": len(world_data["residents"])}
 
+
+@app.get("/tribunal/docket")
+async def get_docket():
+    """Cases that could not be settled by evidence or where evidence appears fraudulent; require human verdict."""
+    docket = [
+        {
+            "id": d["id"],
+            "plaintiff": d["plaintiff"],
+            "defendant": d["defendant"],
+            "stakes": d["stakes"],
+            "claim_evidence": d.get("claim_evidence", ""),
+            "rebuttal": d.get("rebuttal", ""),
+            "docket_reason": d.get("docket_reason", ""),
+        }
+        for d in world_data["active_disputes"]
+        if d.get("status") == "ON_DOCKET"
+    ]
+    return {"docket": docket, "count": len(docket)}
+
 @app.get("/")
 async def read_index(): return FileResponse('index.html')
 
@@ -396,6 +578,25 @@ async def start_world():
                         d["rebuttal"] = d.get("rebuttal") or "No rebuttal submitted (timeout)."
                         world_data["public_feed"].append(f"COURT: Case #{d['id']} — defendant did not rebut in time. Ready for verdict.")
                         await notify_discord_ready_for_verdict(d)
+            # Evidence review: auto-resolve only when proof is verified; else send to docket
+            for d in list(world_data["active_disputes"]):
+                if d.get("status") != "READY_FOR_VERDICT":
+                    continue
+                winner_id, reason, docket_reason = programmatic_verdict(d, world_data["public_feed"])
+                if winner_id is not None:
+                    status, err = await _apply_verdict(d["id"], winner_id, reason=reason)
+                    if status == "applied":
+                        world_data["public_feed"].append(f"COURT: Case #{d['id']} settled by evidence review.")
+                    else:
+                        d["status"] = "ON_DOCKET"
+                        d["docket_reason"] = err or "Defendant has insufficient AC to pay stakes."
+                        world_data["public_feed"].append(f"COURT: Case #{d['id']} moved to docket — {d['docket_reason']}")
+                        await notify_discord_docket_review(d, d["docket_reason"])
+                else:
+                    d["status"] = "ON_DOCKET"
+                    d["docket_reason"] = docket_reason or "Cannot settle programmatically."
+                    world_data["public_feed"].append(f"COURT: Case #{d['id']} moved to docket — {d['docket_reason']}")
+                    await notify_discord_docket_review(d, d["docket_reason"])
             await asyncio.to_thread(db.save_world, world_data)
             await asyncio.sleep(5)
     asyncio.create_task(loop())

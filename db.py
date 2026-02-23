@@ -64,6 +64,7 @@ def load_world():
                 "rebuttal": d.get("rebuttal") or "Waiting...",
                 "status": d["status"],
                 "cycles_remaining": int(d["cycles_remaining"]),
+                "docket_reason": d.get("docket_reason") or "",
             }
             for d in (r.data or [])
         ]
@@ -131,6 +132,7 @@ def save_world(world_data):
                     "rebuttal": d.get("rebuttal", "Waiting..."),
                     "status": d["status"],
                     "cycles_remaining": d.get("cycles_remaining", 3),
+                    "docket_reason": d.get("docket_reason") or None,
                 }
                 for d in world_data["active_disputes"]
             ]).execute()

@@ -20,7 +20,8 @@ create table if not exists disputes (
   claim_evidence text,
   rebuttal text,
   status text not null,
-  cycles_remaining integer not null
+  cycles_remaining integer not null,
+  docket_reason text
 );
 
 create table if not exists feed (
@@ -41,6 +42,9 @@ create table if not exists config (
 );
 
 insert into config (key, value) values ('tribunal_treasury', '0') on conflict (key) do nothing;
+
+-- If disputes table already exists without docket_reason, run:
+-- alter table disputes add column if not exists docket_reason text;
 
 -- Optional: RLS (Row Level Security). For backend-only access with service role key, RLS can be disabled.
 -- If you use anon key from frontend, enable RLS and add policies.
